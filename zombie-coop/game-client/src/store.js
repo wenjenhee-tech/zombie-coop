@@ -1,7 +1,7 @@
 import { reactive } from 'vue';
 import { io } from 'socket.io-client';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = __API_URL__;
 const socket = io(API_BASE);
 
 export const store = reactive({

@@ -67,7 +67,7 @@ const isLoading = ref(false);
 
 const fetchLeaderboard = async (period = null) => {
   try {
-    const base = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api/leaderboard';
+    const base = __API_URL__ + '/api/leaderboard';
     const url = period ? `${base}?period=${period}` : base;
     const res = await fetch(url);
     const data = await res.json();

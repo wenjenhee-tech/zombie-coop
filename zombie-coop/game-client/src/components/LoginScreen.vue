@@ -57,7 +57,7 @@ const isLoading = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api/auth';
+const API_URL = __API_URL__ + '/api/auth';
 
 const handleSubmit = async () => {
   errorMessage.value = '';
