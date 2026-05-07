@@ -48,6 +48,7 @@
 import { ref } from 'vue';
 import axios from 'axios';
 import { store } from '../store.js';
+import { API_URL as BASE_URL } from '../config.js';
 
 const isLogin = ref(true);
 const nickname = ref('');
@@ -57,7 +58,7 @@ const isLoading = ref(false);
 const errorMessage = ref('');
 const successMessage = ref('');
 
-const API_URL = __API_URL__ + '/api/auth';
+const API_URL = BASE_URL + '/api/auth';
 
 const handleSubmit = async () => {
   errorMessage.value = '';

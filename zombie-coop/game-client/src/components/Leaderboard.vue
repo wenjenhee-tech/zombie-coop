@@ -60,6 +60,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { store } from '../store.js';
+import { API_URL } from '../config.js';
 
 const activeTab = ref('all');
 const weekLeaderboard = ref([]);
@@ -67,7 +68,7 @@ const isLoading = ref(false);
 
 const fetchLeaderboard = async (period = null) => {
   try {
-    const base = __API_URL__ + '/api/leaderboard';
+    const base = API_URL + '/api/leaderboard';
     const url = period ? `${base}?period=${period}` : base;
     const res = await fetch(url);
     const data = await res.json();

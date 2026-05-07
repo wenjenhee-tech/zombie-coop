@@ -1,8 +1,8 @@
 import { reactive } from 'vue';
 import { io } from 'socket.io-client';
+import { API_URL } from './config.js';
 
-const API_BASE = __API_URL__;
-const socket = io(API_BASE);
+const socket = io(API_URL);
 
 export const store = reactive({
   currentScreen: 'login', // 'login', 'game', 'vote', 'spectator', 'summary', 'leaderboard'
