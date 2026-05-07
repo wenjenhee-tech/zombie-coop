@@ -1,0 +1,1069 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const http = require('http');
+const { Server } = require('socket.io');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/zombie_coop';
+
+// Connect to MongoDB
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('✅ Connected to MongoDB'))
+  .catch(err => console.error('❌ MongoDB connection error:', err));
+
+// Quick User Model mapping to the schema in the DB
+const userSchema = new mongoose.Schema({
+  nickname: { type: String, required: true, unique: true },
+  passwordHash: { type: String, required: true },
+  avatar: { type: String, enum: ['gunner', 'tank', 'medic', 'trapper'], default: 'gunner' },
+  stats: {
+    bestWave: { type: Number, default: 0 },
+    totalGames: { type: Number, default: 0 },
+    totalKills: { type: Number, default: 0 },
+    totalScore: { type: Number, default: 0 },
+    revives: { type: Number, default: 0 },
+    mvps: { type: Number, default: 0 }
+  },
+  createdAt: { type: Date, default: Date.now },
+  lastLoginAt: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model('User', userSchema, 'users');
+
+const roomSchema = new mongoose.Schema({
+  code: { type: String, required: true, unique: true },
+  hostId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  hostName: { type: String },
+  isPrivate: { type: Boolean, default: false },
+  status: { type: String, enum: ['waiting', 'playing', 'finished'], default: 'waiting' },
+  difficulty: { type: String, enum: ['EASY', 'NORMAL', 'HARD'], default: 'NORMAL' },
+  currentWave: { type: Number, default: 1 },
+  players: [{
+    userId: { type: mongoose.Schema.Types.ObjectId },
+    nickname: String,
+    class: { type: String, enum: ['gunner', 'tank', 'medic', 'trapper'], default: 'gunner' },
+    hp: { type: Number, default: 100 },
+    isAlive: { type: Boolean, default: true }
+  }],
+  activeBuffs: { type: Array, default: [] },
+  updatedAt: { type: Date, default: Date.now }
+});
+const Room = mongoose.model('Room', roomSchema, 'rooms');
+
+const telemetrySchema = new mongoose.Schema({
+  roomCode: String,
+  wave: Number,
+  apm: Number,
+  avgAccuracy: Number,
+  hpLossRate: Number,
+  clearTime: Number,
+  recordedAt: { type: Date, default: Date.now }
+});
+const Telemetry = mongoose.model('Telemetry', telemetrySchema, 'telemetry');
+
+const aiDifficultySchema = new mongoose.Schema({
+  roomCode: String,
+  wave: Number,
+  zombieSpeedMultiplier: Number,
+  eliteSpawnChance: Number,
+  resourceScarcity: Number,
+  generatedAt: { type: Date, default: Date.now }
+});
+const AiDifficulty = mongoose.model('AiDifficulty', aiDifficultySchema, 'ai_difficulty');
+
+const scoreSchema = new mongoose.Schema({
+  nickname: { type: String, required: true },
+  playerClass: { type: String, default: 'Gunner' },
+  wave: { type: Number, default: 1 },
+  kills: { type: Number, default: 0 },
+  score: { type: Number, default: 0 },
+  playerCount: { type: Number, default: 1 },
+  playedAt: { type: Date, default: Date.now }
+});
+const Score = mongoose.model('Score', scoreSchema, 'scores');
+
+// Active rooms in memory for fast socket broadcasting
+const activeRooms = {}; 
+
+// Map Templates — bản đồ có cấu trúc chiến thuật
+function generateMapLayout() {
+  const MAP = 1600;
+  const walls = [];
+
+  // Viền map (tường biên): 4 thanh dọc/ngang ở rìa map
+  // Top border
+  walls.push({ x: 0, y: 0, w: MAP, h: 16 });
+  // Bottom border  
+  walls.push({ x: 0, y: MAP - 16, w: MAP, h: 16 });
+  // Left border
+  walls.push({ x: 0, y: 0, w: 16, h: MAP });
+  // Right border
+  walls.push({ x: MAP - 16, y: 0, w: 16, h: MAP });
+
+  // Chọn ngẫu nhiên 1 trong 3 layout
+  const layoutId = Math.floor(Math.random() * 3);
+
+  if (layoutId === 0) {
+    // Layout "Arena" — Khu trung tâm + 4 góc cover
+    // Khối trung tâm hình chữ thập
+    walls.push({ x: 740, y: 700, w: 120, h: 40 }); // ngang
+    walls.push({ x: 770, y: 660, w: 40, h: 120 });  // dọc
+
+    // 4 góc cover (L-shape)
+    // Góc trên-trái
+    walls.push({ x: 250, y: 250, w: 120, h: 32 });
+    walls.push({ x: 250, y: 250, w: 32, h: 120 });
+    // Góc trên-phải
+    walls.push({ x: 1230, y: 250, w: 120, h: 32 });
+    walls.push({ x: 1318, y: 250, w: 32, h: 120 });
+    // Góc dưới-trái
+    walls.push({ x: 250, y: 1230, w: 120, h: 32 });
+    walls.push({ x: 250, y: 1130, w: 32, h: 120 });
+    // Góc dưới-phải
+    walls.push({ x: 1230, y: 1230, w: 120, h: 32 });
+    walls.push({ x: 1318, y: 1130, w: 32, h: 120 });
+
+    // 2 Barrier lanes ngang
+    walls.push({ x: 500, y: 500, w: 200, h: 28 });
+    walls.push({ x: 900, y: 1050, w: 200, h: 28 });
+
+  } else if (layoutId === 1) {
+    // Layout "Corridors" — Hành lang dọc + ngang tạo 4 khu vực
+    // Tường dọc giữa (có 2 lỗ hở)
+    walls.push({ x: 780, y: 100, w: 40, h: 500 });
+    walls.push({ x: 780, y: 750, w: 40, h: 500 });
+    // Tường ngang giữa (có 2 lỗ hở)
+    walls.push({ x: 100, y: 780, w: 500, h: 40 });
+    walls.push({ x: 750, y: 780, w: 500, h: 40 });
+
+    // Cover nhỏ mỗi góc khu vực
+    walls.push({ x: 300, y: 400, w: 100, h: 32 });
+    walls.push({ x: 1100, y: 400, w: 100, h: 32 });
+    walls.push({ x: 300, y: 1100, w: 100, h: 32 });
+    walls.push({ x: 1100, y: 1100, w: 100, h: 32 });
+
+  } else {
+    // Layout "Bunker" — Vòng tròn bunker giữa + tường rải rác
+    // Bunker trung tâm (4 mảnh tạo ô vuông có 4 lối vào)
+    walls.push({ x: 650, y: 650, w: 120, h: 28 }); // top
+    walls.push({ x: 650, y: 920, w: 120, h: 28 }); // bottom (lệch)
+    walls.push({ x: 840, y: 650, w: 120, h: 28 }); // top right
+    walls.push({ x: 840, y: 920, w: 120, h: 28 }); // bottom right
+    walls.push({ x: 640, y: 670, w: 28, h: 120 }); // left top
+    walls.push({ x: 640, y: 810, w: 28, h: 120 }); // left bottom
+    walls.push({ x: 940, y: 670, w: 28, h: 120 }); // right top
+    walls.push({ x: 940, y: 810, w: 28, h: 120 }); // right bottom
+
+    // Tường rải rác xung quanh
+    walls.push({ x: 200, y: 350, w: 160, h: 28 });
+    walls.push({ x: 1240, y: 350, w: 160, h: 28 });
+    walls.push({ x: 200, y: 1200, w: 160, h: 28 });
+    walls.push({ x: 1240, y: 1200, w: 160, h: 28 });
+
+    // Cover dọc 2 bên
+    walls.push({ x: 400, y: 700, w: 28, h: 200 });
+    walls.push({ x: 1180, y: 700, w: 28, h: 200 });
+  }
+
+  return walls;
+}
+
+io.on('connection', (socket) => {
+  console.log(`🔌 New client connected: ${socket.id}`);
+
+  // Send all active waiting rooms to the client
+  socket.emit('room_list', Object.values(activeRooms).filter(r => r.status === 'waiting'));
+
+  socket.on('create_room', async (data) => {
+    // data: { code, hostName, difficulty, class }
+    const newRoom = {
+      id: data.code,
+      hostSocketId: socket.id,
+      spawnCount: 0,
+      name: data.hostName,
+      difficulty: data.difficulty || 'NORMAL',
+      status: 'waiting',
+      players: [
+        { id: socket.id, nickname: data.hostName, class: data.class, isAlive: true, kills: 0, score: 0 }
+      ],
+      maxPlayers: 4,
+      wave: 1
+    };
+    
+    activeRooms[data.code] = newRoom;
+    socket.join(data.code);
+    
+    // Gửi room_update lại cho host để hiển thị đúng slot
+    socket.emit('room_update', newRoom);
+    // Broadcast updated room list to everyone in lobby
+    io.emit('room_list', Object.values(activeRooms).filter(r => r.status === 'waiting'));
+    
+    // Attempt to save to MongoDB
+    try {
+      await Room.create({
+        code: data.code,
+        hostName: data.hostName,
+        difficulty: (data.difficulty || 'NORMAL').toUpperCase(),
+        status: 'waiting',
+        currentWave: 1,
+        players: [{ nickname: data.hostName, class: (data.class || 'Gunner').toLowerCase(), hp: 100, isAlive: true }]
+      });
+    } catch(e) { console.error("Failed to save room to DB", e); }
+  });
+
+  socket.on('join_room', (data) => {
+    // data: { code, nickname, class }
+    const room = activeRooms[data.code];
+    if (!room || room.status !== 'waiting') {
+      socket.emit('error', 'Room does not exist or game already started');
+      return;
+    }
+    // Chặn tự join lại phòng mình
+    if (room.players.find(p => p.id === socket.id)) {
+      socket.emit('error', 'You are already in this room');
+      return;
+    }
+    if (room.players.length >= 4) {
+      socket.emit('error', 'Room is full');
+      return;
+    }
+    room.players.push({ id: socket.id, nickname: data.nickname, class: data.class, isAlive: true, kills: 0, score: 0 });
+    socket.join(data.code);
+    
+    // Update everyone in the room
+    io.to(data.code).emit('room_update', room);
+    // Update lobby list
+    io.emit('room_list', Object.values(activeRooms).filter(r => r.status === 'waiting'));
+  });
+
+  socket.on('leave_room', (roomCode) => {
+    const room = activeRooms[roomCode];
+    if (room) {
+      room.players = room.players.filter(p => p.id !== socket.id);
+      socket.leave(roomCode);
+      if (room.players.length === 0) {
+        delete activeRooms[roomCode];
+      } else {
+        room.name = room.players[0].nickname;
+        room.hostSocketId = room.players[0].id;
+        io.to(room.players[0].id).emit('you_are_host');
+        io.to(roomCode).emit('room_update', room);
+      }
+      io.emit('room_list', Object.values(activeRooms).filter(r => r.status === 'waiting'));
+    }
+  });
+
+  socket.on('start_game', async (roomCode) => {
+    const room = activeRooms[roomCode];
+    if (room && socket.id === room.hostSocketId) {
+      room.status = 'playing';
+      room.spawnCount = 0;
+      room.zombies = {};
+      room.zombiesToSpawn = 0;
+      room.zombiesSpawned = 0;
+      room.isWaveActive = false;
+      room.currentWave = 1;
+      room.gameStartTime = Date.now();
+      room.waveStartTime = Date.now();
+      room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
+      room.players.forEach(p => { p.kills = 0; p.score = 0; });
+      
+      // Tạo bản đồ có cấu trúc (1600x1600)
+      room.wallData = generateMapLayout();
+
+      io.to(roomCode).emit('game_started', { wallData: room.wallData });
+      io.emit('room_list', Object.values(activeRooms).filter(r => r.status === 'waiting'));
+
+      try {
+        await Room.updateOne({ code: roomCode }, { status: 'playing' });
+      } catch(e) {}
+    }
+  });
+
+  // MULTIPLAYER GAME SYNC EVENTS
+
+  // Player Movement & Rotation
+  socket.on('player_move', (data) => {
+    // data: { roomCode, x, y, rotation, velocityX, velocityY }
+    const room = activeRooms[data.roomCode];
+    if (room) {
+      const player = room.players.find(p => p.id === socket.id);
+      if (player) {
+        player.x = data.x;
+        player.y = data.y;
+      }
+      if (room.telemetry) room.telemetry.actionCount++;
+    }
+    // Broadcast to everyone else in the room
+    socket.to(data.roomCode).emit('player_moved', {
+      id: socket.id,
+      x: data.x,
+      y: data.y,
+      rotation: data.rotation,
+      velocityX: data.velocityX,
+      velocityY: data.velocityY
+    });
+  });
+
+  // Player Shooting
+  socket.on('player_shoot', (data) => {
+    // data: { roomCode, x, y, angle, damage, isPiercing, isFireAmmo }
+    const room = activeRooms[data.roomCode];
+    if (room && room.telemetry) {
+      room.telemetry.shotsFired++;
+      room.telemetry.actionCount++;
+    }
+    socket.to(data.roomCode).emit('player_shot', {
+      id: socket.id,
+      x: data.x,
+      y: data.y,
+      angle: data.angle,
+      damage: data.damage,
+      isPiercing: data.isPiercing,
+      isFireAmmo: data.isFireAmmo
+    });
+  });
+
+  // Zombie Spawning (Bị loại bỏ do Server tự spawn)
+  socket.on('zombie_spawn', (data) => {});
+  socket.on('zombie_update', (data) => {});
+
+  // Server nhận sát thương từ Client (Client nào bắn trúng cũng gửi)
+  socket.on('zombie_damaged', (data) => {
+    // data: { roomCode, zombieId, damage, effect }
+    const room = activeRooms[data.roomCode];
+    if (!room || !room.zombies[data.zombieId]) return;
+    
+    // Đã chết trước đó rồi nhưng chưa bị xóa thì return luôn
+    if (room.zombies[data.zombieId].isDead) return;
+
+    if (room.telemetry) room.telemetry.shotsHit++;
+
+    room.zombies[data.zombieId].hp -= data.damage;
+    if (room.zombies[data.zombieId].hp <= 0) {
+      const dyingZombie = room.zombies[data.zombieId];
+      dyingZombie.isDead = true; // Cờ đánh dấu đã chết
+      const zombieScore = dyingZombie.type === 'hordeking' ? 1000
+          : dyingZombie.type === 'brute' ? 400
+          : dyingZombie.type === 'runner' ? 40
+          : 100;
+      const killer = room.players.find(p => p.id === socket.id);
+      if (killer) { killer.kills++; killer.score += zombieScore; }
+
+      const wasScreamer = dyingZombie.type === 'screamer';
+      const dx = dyingZombie.x;
+      const dy = dyingZombie.y;
+
+      // Xóa zombie khỏi bộ nhớ ngay lập tức
+      delete room.zombies[data.zombieId];
+
+      // Screamer chết → spawn 3 walker (server-authoritative để bullet sync đúng)
+      if (wasScreamer) {
+        for (let i = 0; i < 3; i++) {
+          const ox = Math.floor(Math.random() * 80) - 40;
+          const oy = Math.floor(Math.random() * 80) - 40;
+          const newId = Math.random().toString(36).substring(2, 9);
+          room.zombies[newId] = {
+            id: newId,
+            type: 'walker',
+            x: dx + ox,
+            y: dy + oy,
+            hp: 30,
+            speed: 50,
+            rotation: 0
+          };
+          io.to(data.roomCode).emit('zombie_spawned', {
+            roomCode: data.roomCode,
+            zombieId: newId,
+            type: 'walker',
+            x: dx + ox,
+            y: dy + oy,
+            hp: 30
+          });
+        }
+      }
+    }
+    // Phát lại cho mọi người để vẽ hiệu ứng
+    io.to(data.roomCode).emit('zombie_took_damage', data);
+  });
+
+  // Host báo wave ended (hoặc Server tự báo, tạm thời giữ để không phá vỡ UI)
+  socket.on('end_wave', (roomCode) => {
+    const room = activeRooms[roomCode];
+    if (room) room.isWaveActive = false;
+    io.to(roomCode).emit('intermission_start', {});
+  });
+
+  // Host triggers next wave
+  socket.on('start_next_wave', (roomCode) => {
+    const room = activeRooms[roomCode];
+    if (room && socket.id === room.hostSocketId) {
+      if (room.isWaveActive) return; // chống click nhiều lần làm nhảy wave
+      room.currentWave += 1;
+      room.votes = {};
+      room.voteResolved = false;
+      io.to(roomCode).emit('next_wave_started', room.currentWave);
+
+      const playerCount = room.players.filter(p => p.isAlive).length || 1;
+      const baseCount = Math.floor(3 + room.currentWave * 1.5 + room.currentWave * room.currentWave * 0.15);
+      room.isWaveActive = true;
+      // Boss waves spawn đúng 1 con (theo design CLAUDE.md)
+      const isBossWave = room.currentWave === 5 || room.currentWave === 10;
+      room.zombiesToSpawn = isBossWave ? 1 : Math.floor(baseCount * (0.5 + playerCount * 0.5));
+      room.zombiesSpawned = 0;
+      room.zombies = {};
+      room.lastSpawnTime = Date.now();
+      room.waveStartTime = Date.now();
+      room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
+    }
+  });
+
+  // Client ready to start wave 1 (sau khi GameScene loaded lần đầu)
+  socket.on('host_ready_to_spawn', (roomCode) => {
+    const room = activeRooms[roomCode];
+    if (room && socket.id === room.hostSocketId) {
+      if (room.isWaveActive) return; // Đã active rồi thì bỏ qua (tránh double-init)
+      room.isWaveActive = true;
+      // Scale zombie count theo số người chơi (solo = ít hơn)
+      const playerCount = room.players.filter(p => p.isAlive).length || 1;
+      const baseCount = Math.floor(3 + room.currentWave * 1.5 + room.currentWave * room.currentWave * 0.15);
+      const isBossWave = room.currentWave === 5 || room.currentWave === 10;
+      room.zombiesToSpawn = isBossWave ? 1 : Math.floor(baseCount * (0.5 + playerCount * 0.5));
+      room.zombiesSpawned = 0;
+      room.zombies = {};
+      room.lastSpawnTime = Date.now();
+      room.waveStartTime = Date.now();
+      room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
+    }
+  });
+
+  // POWERUP VOTING
+
+  socket.on('cast_vote', (data) => {
+    // data: { roomCode, powerId }
+    const room = activeRooms[data.roomCode];
+    if (!room) return;
+    if (room.voteResolved) return; // không nhận thêm vote sau khi đã chốt
+    const voter = room.players.find(p => p.id === socket.id && p.isAlive);
+    if (!voter) return;
+    if (!room.votes) room.votes = {};
+    room.votes[socket.id] = data.powerId;
+
+    // Tally: count votes per powerId
+    const tally = {};
+    Object.values(room.votes).forEach(id => { tally[id] = (tally[id] || 0) + 1; });
+    io.to(data.roomCode).emit('vote_update', tally);
+
+    // If all alive players have voted, resolve immediately
+    const alivePlayers = room.players.filter(p => p.isAlive);
+    if (Object.keys(room.votes).length >= alivePlayers.length) {
+      const winnerId = Object.keys(tally).reduce((a, b) => tally[a] >= tally[b] ? a : b);
+      room.voteResolved = true;
+      io.to(data.roomCode).emit('vote_result', { winnerId });
+      room.votes = {};
+    }
+  });
+
+  // Host calls this when countdown expires without full votes
+  socket.on('finalize_vote', (roomCode) => {
+    const room = activeRooms[roomCode];
+    if (!room || socket.id !== room.hostSocketId) return;
+    if (room.voteResolved) return;
+    const tally = {};
+    Object.values(room.votes || {}).forEach(id => { tally[id] = (tally[id] || 0) + 1; });
+
+    let winnerId;
+    if (Object.keys(tally).length === 0) {
+      // No votes cast — pick first option as default
+      winnerId = null;
+    } else {
+      winnerId = Object.keys(tally).reduce((a, b) => tally[a] >= tally[b] ? a : b);
+    }
+    room.voteResolved = true;
+    io.to(roomCode).emit('vote_result', { winnerId });
+    room.votes = {};
+  });
+
+  // CLASS SKILLS RELAY
+
+  socket.on('heal_aoe', (data) => {
+    // data: { roomCode, healAmount, sourceId }
+    const room = activeRooms[data.roomCode];
+    if (!room) return;
+    const sender = room.players.find(p => p.id === socket.id);
+    if (!sender || (sender.class || '').toLowerCase() !== 'medic') return; // chỉ Medic
+    socket.to(data.roomCode).emit('heal_aoe', data);
+  });
+
+  socket.on('shield_wall_active', (data) => {
+    // data: { roomCode, tankId, x, y, radius, duration }
+    socket.to(data.roomCode).emit('shield_wall_active', data);
+  });
+
+  socket.on('taunt_active', (data) => {
+    // data: { roomCode, duration, tankId, x, y }
+    const room = activeRooms[data.roomCode];
+    if (room) {
+      // Server lưu state để pathing trong setInterval override target sang Tank
+      room.tauntActive = {
+        x: data.x,
+        y: data.y,
+        tankId: socket.id,
+        expireAt: Date.now() + (data.duration || 8000)
+      };
+    }
+    socket.to(data.roomCode).emit('taunt_active', data);
+  });
+
+  // TRAPPER MINES — Server-authoritative mine placement & detonation
+  socket.on('mine_placed', (data) => {
+    // data: { roomCode, x, y, isFreeze }
+    const room = activeRooms[data.roomCode];
+    if (!room) return;
+    if (!room.mines) room.mines = {};
+    const mineId = 'mine_' + Math.random().toString(36).substring(2, 9);
+    room.mines[mineId] = {
+      id: mineId,
+      x: data.x,
+      y: data.y,
+      isFreeze: data.isFreeze,
+      radius: data.isFreeze ? 100 : 80,
+      damage: data.isFreeze ? 0 : 40,
+      placedAt: Date.now(),
+      placedBy: socket.id
+    };
+    // Broadcast mine visual cho tất cả client
+    io.to(data.roomCode).emit('mine_placed', { mineId, x: data.x, y: data.y, isFreeze: data.isFreeze });
+  });
+
+
+
+
+  // Revive: live teammate đứng gần xác (≤100px) trong vòng 30s
+  socket.on('revive_request', (data) => {
+    // data: { roomCode, targetId }
+    const room = activeRooms[data.roomCode];
+    if (!room) return;
+    const reviver = room.players.find(p => p.id === socket.id);
+    const target = room.players.find(p => p.id === data.targetId);
+    if (!reviver || !target) return;
+    if (!reviver.isAlive || target.isAlive) return;
+    if (!target.deathTime || Date.now() - target.deathTime > 30000) return;
+    const rx = reviver.x, ry = reviver.y;
+    if (rx === undefined || ry === undefined) return;
+    const dist = Math.hypot(rx - target.deathX, ry - target.deathY);
+    if (dist > 100) return;
+
+    target.isAlive = true;
+    target.x = target.deathX;
+    target.y = target.deathY;
+    reviver.revives = (reviver.revives || 0) + 1;
+
+    io.to(data.roomCode).emit('player_revived', {
+      targetId: target.id,
+      reviverId: reviver.id,
+      x: target.deathX,
+      y: target.deathY,
+      hp: 30
+    });
+
+    target.deathTime = null;
+    target.deathX = null;
+    target.deathY = null;
+  });
+
+  socket.on('player_died', (data) => {
+    const room = activeRooms[data.roomCode];
+    if (!room) return;
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (player) {
+      player.isAlive = false;
+      player.deathTime = Date.now();
+      player.deathX = player.x;
+      player.deathY = player.y;
+    }
+
+    io.to(data.roomCode).emit('player_died', {
+      id: socket.id,
+      x: player?.deathX,
+      y: player?.deathY
+    });
+
+    const allDead = room.players.length > 0 && room.players.every(p => p.isAlive === false);
+    if (allDead) {
+      room.status = 'finished';
+      const elapsedMs = Date.now() - (room.gameStartTime || Date.now());
+      
+      // Tự động lưu Score vào DB
+      room.players.forEach(p => {
+        Score.create({
+          nickname: p.nickname,
+          playerClass: p.class || 'Gunner',
+          wave: room.currentWave,
+          kills: p.kills || 0,
+          score: p.score || 0,
+          playerCount: room.players.length
+        }).catch(err => console.error('Score save error:', err));
+      });
+
+      io.to(data.roomCode).emit('game_over', {
+        wave: room.currentWave,
+        result: 'Thua',
+        elapsedMs,
+        players: room.players.map(p => ({
+          id: p.id,
+          name: p.nickname,
+          class: p.class || 'Gunner',
+          kills: p.kills || 0,
+          score: p.score || 0,
+          isAlive: p.isAlive
+        }))
+      });
+      delete activeRooms[data.roomCode];
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔌 Client disconnected: ${socket.id}`);
+    // Clean up rooms
+    for (const code in activeRooms) {
+      const room = activeRooms[code];
+      const pIndex = room.players.findIndex(p => p.id === socket.id);
+      if (pIndex !== -1) {
+        room.players.splice(pIndex, 1);
+        if (room.players.length === 0) {
+          delete activeRooms[code];
+        } else {
+          room.name = room.players[0].nickname;
+          room.hostSocketId = room.players[0].id;
+          io.to(room.players[0].id).emit('you_are_host');
+          io.to(code).emit('room_update', room);
+        }
+        io.emit('room_list', Object.values(activeRooms).filter(r => r.status === 'waiting'));
+      }
+    }
+  });
+});
+
+// --- SERVER-AUTHORITATIVE GAME LOOP ---
+setInterval(() => {
+  const now = Date.now();
+  for (const code in activeRooms) {
+    const room = activeRooms[code];
+    if (room.status !== 'playing' || !room.isWaveActive) continue;
+
+    // 1. Spawning Logic
+    if (room.zombiesSpawned < room.zombiesToSpawn && now - (room.lastSpawnTime || 0) > 1500) {
+      room.lastSpawnTime = now;
+      room.zombiesSpawned++;
+      
+      const margin = 50;
+      const mapSize = 1600;
+      const isHorizontal = Math.random() < 0.5;
+      let x, y;
+      if (isHorizontal) {
+        x = Math.floor(Math.random() * (mapSize - margin * 2)) + margin;
+        y = Math.random() < 0.5 ? margin : mapSize - margin;
+      } else {
+        x = Math.random() < 0.5 ? margin : mapSize - margin;
+        y = Math.floor(Math.random() * (mapSize - margin * 2)) + margin;
+      }
+
+      const dp = room.difficultyParams || {};
+      const speedMult = dp.zombieSpeedMultiplier || 1;
+      const eliteChance = dp.eliteSpawnChance || 0;
+
+      let type = 'walker';
+      const types = ['walker', 'walker'];
+      if (room.currentWave >= 3) types.push('runner');
+      if (room.currentWave >= 4) types.push('runner');
+      if (room.currentWave >= 6) types.push('spitter', 'screamer');
+      if (room.currentWave >= 8) types.push('exploder');
+      if (room.currentWave >= 11) types.push('brute');
+
+      if (room.currentWave === 5) type = 'brute';
+      else if (room.currentWave === 10) type = 'hordeking';
+      else if (eliteChance > 0 && Math.random() < eliteChance) type = 'brute';
+      else type = types[Math.floor(Math.random() * types.length)];
+
+      const baseSpeed = type === 'runner' ? 120 : type === 'brute' ? 30 : 50;
+      // HP ph\u1ea3i kh\u1edbp v\u1edbi Zombie.js client-side
+      const HP_TABLE = { walker: 30, runner: 20, brute: 200, spitter: 30, hordeking: 500, screamer: 15, exploder: 40 };
+      const zombieId = Math.random().toString(36).substring(2, 9);
+      room.zombies[zombieId] = {
+        id: zombieId,
+        type: type,
+        x: x,
+        y: y,
+        hp: HP_TABLE[type] || 30,
+        speed: Math.round(baseSpeed * speedMult),
+        rotation: 0
+      };
+
+      io.to(code).emit('zombie_spawned', {
+        roomCode: code,
+        zombieId: zombieId,
+        type: type,
+        x: x,
+        y: y,
+        hp: HP_TABLE[type] || 30
+      });
+    }
+
+    // 2. Movement Logic (đuổi theo người chơi gần nhất, có honor effect/taunt)
+    const alivePlayers = room.players.filter(p => p.isAlive && p.x !== undefined);
+    const tauntActive = room.tauntActive && now < room.tauntActive.expireAt ? room.tauntActive : null;
+    if (alivePlayers.length > 0) {
+      for (const zId in room.zombies) {
+        const zombie = room.zombies[zId];
+        const eff = zombie.effects || null;
+
+        // Freeze: đứng yên hoàn toàn
+        if (eff && eff.freeze && now < eff.freeze) continue;
+
+        let targetX, targetY;
+        if (tauntActive) {
+          // Taunt override: zombie trong bán kính 320 chase Tank
+          const distToTank = Math.hypot(tauntActive.x - zombie.x, tauntActive.y - zombie.y);
+          if (distToTank < 320) {
+            targetX = tauntActive.x;
+            targetY = tauntActive.y;
+          }
+        }
+        if (targetX === undefined) {
+          let nearestPlayer = null;
+          let minDist = Infinity;
+          for (const player of alivePlayers) {
+            const dist = Math.hypot(player.x - zombie.x, player.y - zombie.y);
+            if (dist < minDist) {
+              minDist = dist;
+              nearestPlayer = player;
+            }
+          }
+          if (nearestPlayer) {
+            targetX = nearestPlayer.x;
+            targetY = nearestPlayer.y;
+          }
+        }
+
+        if (targetX !== undefined) {
+          const dx = targetX - zombie.x;
+          const dy = targetY - zombie.y;
+          const distToTarget = Math.hypot(dx, dy);
+
+          // Exploder: khi tiếp cận đủ gần thì phát nổ server-side (tránh multi-client damage)
+          if (zombie.type === 'exploder' && distToTarget < 70 && !zombie.exploded) {
+            zombie.exploded = true;
+            zombie.isDead = true;
+            delete room.zombies[zId];
+            io.to(code).emit('exploder_exploded', {
+              zombieId: zombie.id,
+              x: zombie.x,
+              y: zombie.y,
+              radius: 70,
+              damage: 25
+            });
+            continue;
+          }
+
+          if (distToTarget > 10) {
+            const angle = Math.atan2(dy, dx);
+            // Slow effect: -50% speed
+            const slowMul = (eff && eff.slow && now < eff.slow) ? 0.5 : 1;
+            const moveDist = zombie.speed * slowMul * (50 / 1000);
+            zombie.x += Math.cos(angle) * moveDist;
+            zombie.y += Math.sin(angle) * moveDist;
+            zombie.rotation = angle;
+
+            io.to(code).emit('zombie_updated', {
+              roomCode: code,
+              zombieId: zombie.id,
+              x: zombie.x,
+              y: zombie.y,
+              rotation: zombie.rotation
+            });
+          }
+        }
+      }
+    }
+
+    // 2b. Mine Trigger Logic
+    if (room.mines && Object.keys(room.mines).length > 0) {
+      for (const mineId in room.mines) {
+        const mine = room.mines[mineId];
+        // Expire after 15s
+        if (now - mine.placedAt > 15000) {
+          delete room.mines[mineId];
+          continue;
+        }
+        let triggered = false;
+        for (const zId in room.zombies) {
+          const z = room.zombies[zId];
+          if (Math.hypot(z.x - mine.x, z.y - mine.y) < 24) {
+            triggered = true;
+            break;
+          }
+        }
+        if (!triggered) continue;
+        // Áp damage + effect cho zombie trong radius
+        for (const zId in room.zombies) {
+          const z = room.zombies[zId];
+          const d = Math.hypot(z.x - mine.x, z.y - mine.y);
+          if (d >= mine.radius) continue;
+          if (mine.damage > 0 && !z.isDead) {
+            z.hp -= mine.damage;
+            io.to(code).emit('zombie_took_damage', {
+              roomCode: code,
+              zombieId: zId,
+              damage: mine.damage
+            });
+            if (z.hp <= 0) {
+              z.isDead = true;
+              const owner = room.players.find(p => p.id === mine.placedBy);
+              const score = z.type === 'hordeking' ? 1000 : z.type === 'brute' ? 400 : z.type === 'runner' ? 40 : 100;
+              if (owner) { owner.kills++; owner.score += score; }
+              delete room.zombies[zId];
+            }
+          }
+          if (z && !z.isDead) {
+            z.effects = z.effects || {};
+            if (mine.isFreeze) z.effects.freeze = now + 3000;
+            else z.effects.slow = now + 2000;
+          }
+        }
+        io.to(code).emit('mine_exploded', {
+          mineId: mine.id,
+          x: mine.x,
+          y: mine.y,
+          radius: mine.radius,
+          isFreeze: mine.isFreeze
+        });
+        delete room.mines[mineId];
+      }
+    }
+
+    // 3. Wave Clear Logic
+    if (room.zombiesSpawned >= room.zombiesToSpawn && Object.keys(room.zombies).length === 0) {
+      room.isWaveActive = false;
+      room.voteResolved = false;
+      room.votes = {};
+
+      // Auto-revive: hồi sinh người chết nếu còn ≥1 người sống
+      const alivePlayers = room.players.filter(p => p.isAlive);
+      if (alivePlayers.length > 0) {
+        const deadPlayers = room.players.filter(p => !p.isAlive);
+        for (const dead of deadPlayers) {
+          dead.isAlive = true;
+          const spawnX = dead.deathX ?? 400;
+          const spawnY = dead.deathY ?? 300;
+          dead.deathTime = null;
+          dead.deathX = null;
+          dead.deathY = null;
+          io.to(code).emit('player_revived', {
+            targetId: dead.id,
+            reviverId: null,
+            x: spawnX,
+            y: spawnY,
+            hp: 50
+          });
+        }
+      }
+
+      // Calculate & Save Telemetry
+      const wave = room.currentWave;
+      const clearTimeSec = Math.max(1, Math.round((Date.now() - (room.waveStartTime || Date.now())) / 1000));
+      const actionCount = room.telemetry ? room.telemetry.actionCount : 0;
+      const apm = Math.round((actionCount / clearTimeSec) * 60);
+      const shotsFired = room.telemetry ? room.telemetry.shotsFired : 0;
+      const shotsHit = room.telemetry ? room.telemetry.shotsHit : 0;
+      const avgAccuracy = shotsFired > 0 ? (shotsHit / shotsFired) : 0.5;
+      const hpLossRate = 0; // Not perfectly tracked currently, placeholder
+
+      Telemetry.create({ roomCode: code, wave, apm, avgAccuracy, hpLossRate, clearTime: clearTimeSec })
+        .catch(e => console.error('Telemetry save error:', e));
+
+      // Fetch AI difficulty based on new telemetry
+      fetch('http://localhost:8000/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wave, apm, avgAccuracy, hpLossRate, clearTime: clearTimeSec })
+      })
+      .then(res => res.json())
+      .then(params => {
+        AiDifficulty.create({ roomCode: code, wave, ...params }).catch(()=>{});
+        if (activeRooms[code]) activeRooms[code].difficultyParams = params;
+        io.to(code).emit('difficulty_update', params);
+      })
+      .catch(e => console.warn('AI service unavailable, using default difficulty'));
+
+      const POWERUP_POOL = [
+        { id: 'speed_boost', name: 'Speed Boost', desc: '+20% tốc độ di chuyển toàn đội', tier: 1 },
+        { id: 'fire_ammo', name: 'Fire Ammo', desc: 'Đạn gây damage theo thời gian', tier: 2, isClassBonus: true, bonusText: '+15% Gunner' },
+        { id: 'iron_skin', name: 'Iron Skin', desc: 'Giảm 20% damage nhận vào', tier: 2 },
+        { id: 'regen_aura', name: 'Regen Aura', desc: 'Tự hồi 1HP/giây khi không bị tấn công', tier: 1 },
+        { id: 'rapid_fire', name: 'Rapid Fire', desc: '+25% tốc độ bắn toàn đội', tier: 2 },
+        { id: 'medkit_surge', name: 'Medkit Surge', desc: 'Hồi phục 20HP ngay lập tức', tier: 1 }
+      ];
+      const shuffled = POWERUP_POOL.sort(() => Math.random() - 0.5).slice(0, 3);
+      io.to(code).emit('intermission_start', { options: shuffled });
+    }
+  }
+}, 50);
+
+// API: Register
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { nickname, password } = req.body;
+    
+    if (!nickname || !password) {
+      return res.status(400).json({ error: 'Nickname and password are required' });
+    }
+    
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    const existingUser = await User.findOne({ nickname });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Nickname is already taken' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    const newUser = new User({
+      nickname,
+      passwordHash,
+      createdAt: new Date(),
+      lastLoginAt: new Date()
+    });
+
+    await newUser.save();
+    
+    res.status(201).json({
+      message: 'Registration successful',
+      user: {
+        id: newUser._id,
+        nickname: newUser.nickname,
+        stats: newUser.stats
+      }
+    });
+  } catch (err) {
+    console.error('Registration Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// API: Login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { nickname, password } = req.body;
+    
+    const user = await User.findOne({ nickname });
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid nickname or password' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Invalid nickname or password' });
+    }
+
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    res.status(200).json({
+      message: 'Login successful',
+      user: {
+        id: user._id,
+        nickname: user.nickname,
+        stats: user.stats
+      }
+    });
+  } catch (err) {
+    console.error('Login Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// API: Submit Score
+app.post('/api/scores', async (req, res) => {
+  try {
+    const { nickname, class: playerClass, wave, kills, score, playerCount } = req.body;
+    if (!nickname) return res.status(400).json({ error: 'nickname required' });
+
+    await Score.create({ nickname, playerClass, wave, kills, score, playerCount });
+
+    // Update user lifetime stats
+    await User.updateOne(
+      { nickname },
+      {
+        $inc: { 'stats.totalGames': 1, 'stats.totalKills': kills || 0, 'stats.totalScore': score || 0 },
+        $max: { 'stats.bestWave': wave || 0 }
+      }
+    );
+
+    res.status(201).json({ message: 'Score saved' });
+  } catch (err) {
+    console.error('Score save error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// API: Leaderboard
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const matchStage = {};
+    if (req.query.period === 'week') {
+      matchStage.playedAt = { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+    }
+    const entries = await Score.aggregate([
+      ...(Object.keys(matchStage).length ? [{ $match: matchStage }] : []),
+      {
+        $group: {
+          _id: '$nickname',
+          bestWave: { $max: '$wave' },
+          totalScore: { $sum: '$score' },
+          playerClass: { $last: '$playerClass' },
+          playerCount: { $last: '$playerCount' }
+        }
+      },
+      { $sort: { bestWave: -1, totalScore: -1 } },
+      { $limit: 50 }
+    ]);
+
+    const leaderboard = entries.map((e, i) => ({
+      rank: i + 1,
+      id: e._id.substring(0, 2).toUpperCase(),
+      name: e._id,
+      class: e.playerClass || 'Gunner',
+      players: e.playerCount || 1,
+      wave: e.bestWave,
+      score: e.totalScore
+    }));
+
+    res.status(200).json(leaderboard);
+  } catch (err) {
+    console.error('Leaderboard error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => {
+  console.log(`API Server running on port ${PORT}`);
+});

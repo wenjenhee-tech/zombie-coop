@@ -1,0 +1,280 @@
+[
+  {
+    "collection": "users",
+    "description": "Thông tin người chơi, stats cá nhân, lịch sử game",
+    "validation": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "nickname",
+          "passwordHash",
+          "stats",
+          "createdAt"
+        ],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "nickname": { "bsonType": "string", "minLength": 2, "maxLength": 20 },
+          "passwordHash": { "bsonType": "string", "minLength": 60 },
+          "avatar": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper"] },
+          "stats": {
+            "bsonType": "object",
+            "required": ["bestWave", "totalGames", "totalKills", "totalScore"],
+            "properties": {
+              "bestWave": { "bsonType": "int", "minimum": 0 },
+              "totalGames": { "bsonType": "int", "minimum": 0 },
+              "totalKills": { "bsonType": "int", "minimum": 0 },
+              "totalScore": { "bsonType": "int", "minimum": 0 },
+              "revives": { "bsonType": "int", "minimum": 0 },
+              "mvps": { "bsonType": "int", "minimum": 0 }
+            }
+          },
+          "createdAt": { "bsonType": "date" },
+          "lastLoginAt": { "bsonType": "date" }
+        }
+      }
+    },
+    "indexes": [
+      { "keys": { "nickname": 1 }, "options": { "unique": true } },
+      { "keys": { "stats.bestWave": -1 }, "options": { "name": "leaderboard_wave" } },
+      { "keys": { "stats.totalScore": -1 }, "options": { "name": "leaderboard_score" } }
+    ]
+  },
+  {
+    "collection": "rooms",
+    "description": "Phòng chơi realtime — tự xóa sau 2h không hoạt động",
+    "validation": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "code",
+          "hostId",
+          "isPrivate",
+          "status",
+          "difficulty",
+          "currentWave",
+          "players",
+          "updatedAt"
+        ],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "code": { "bsonType": "string", "minLength": 6, "maxLength": 6 },
+          "hostId": { "bsonType": "objectId" },
+          "isPrivate": { "bsonType": "bool" },
+          "status": { "bsonType": "string", "enum": ["waiting", "playing", "finished"] },
+          "difficulty": { "bsonType": "string", "enum": ["EASY", "NORMAL", "HARD"] },
+          "currentWave": { "bsonType": "int", "minimum": 1 },
+          "players": {
+            "bsonType": "array",
+            "maxItems": 4,
+            "items": {
+              "bsonType": "object",
+              "required": ["userId", "class", "hp", "isAlive"],
+              "properties": {
+                "userId": { "bsonType": "objectId" },
+                "class": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper"] },
+                "hp": { "bsonType": "int", "minimum": 0, "maximum": 500 },
+                "isAlive": { "bsonType": "bool" }
+              }
+            }
+          },
+          "activeBuffs": { "bsonType": "array" },
+          "updatedAt": { "bsonType": "date" }
+        }
+      }
+    },
+    "indexes": [
+      { "keys": { "code": 1 }, "options": { "unique": true } },
+      { "keys": { "updatedAt": 1 }, "options": { "expireAfterSeconds": 7200 } }
+    ]
+  },
+  {
+    "collection": "scores",
+    "description": "Kết quả sau mỗi game — dùng cho leaderboard và stats",
+    "validation": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+          "roomCode",
+          "wavesCleared",
+          "totalKills",
+          "durationSeconds",
+          "result",
+          "players",
+          "createdAt"
+        ],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "roomCode": { "bsonType": "string", "minLength": 6, "maxLength": 6 },
+          "wavesCleared": { "bsonType": "int", "minimum": 0 },
+          "totalKills": { "bsonType": "int", "minimum": 0 },
+          "totalScore": { "bsonType": "int", "minimum": 0 },
+          "durationSeconds": { "bsonType": "int", "minimum": 0 },
+          "result": { "bsonType": "string", "enum": ["win", "lose"] },
+          "players": {
+            "bsonType": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+              "bsonType": "object",
+              "required": ["userId", "kills", "class", "survived", "score"],
+              "properties": {
+                "userId": { "bsonType": "objectId" },
+                "kills": { "bsonType": "int", "minimum": 0 },
+                "score": { "bsonType": "int", "minimum": 0 },
+                "class": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper"] },
+                "survived": { "bsonType": "bool" },
+                "isMVP": { "bsonType": "bool" },
+                "accuracy": { "bsonType": "double" },
+                "damageBlock": { "bsonType": "double" },
+                "healDone": { "bsonType": "double" },
+                "revives": { "bsonType": "int" }
+              }
+            }
+          },
+          "powerupsUsed": { "bsonType": "array" },
+          "createdAt": { "bsonType": "date" }
+        }
+      }
+    },
+    "indexes": [
+      { "keys": { "wavesCleared": -1, "createdAt": -1 }, "options": { "name": "leaderboard" } },
+      { "keys": { "players.userId": 1 }, "options": { "name": "per_user_history" } }
+    ]
+  },
+  {
+    "collection": "powerups",
+    "description": "Danh sách buff tĩnh và hệ thống nâng cấp có classBonus",
+    "validation": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["key", "name", "description", "tier", "effect"],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "key": { "bsonType": "string" },
+          "name": { "bsonType": "string" },
+          "description": { "bsonType": "string" },
+          "tier": { "bsonType": "int", "enum": [1, 2, 3] },
+          "effect": {
+            "bsonType": "object",
+            "required": ["type"],
+            "properties": {
+              "type": { "bsonType": "string", "enum": ["stat", "aoe", "passive"] },
+              "stat": { "bsonType": "string" },
+              "value": { "bsonType": "double" }
+            }
+          },
+          "classBonus": {
+            "bsonType": "object",
+            "required": ["className", "bonusMultiplier"],
+            "properties": {
+              "className": { "bsonType": "string", "enum": ["Gunner", "Tank", "Medic", "Trapper"] },
+              "bonusMultiplier": { "bsonType": "double" },
+              "bonusText": { "bsonType": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "collection": "maps",
+    "description": "Thiết kế Map, kiến trúc vật cản, và điểm spawn loot",
+    "validation": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["mapId", "name", "environment", "architecture", "lootZones"],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "mapId": { "bsonType": "string" },
+          "name": { "bsonType": "string" },
+          "environment": { "bsonType": "string", "enum": ["indoor", "outdoor", "facility"] },
+          "architecture": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "object",
+              "required": ["x", "y", "width", "height", "type"],
+              "properties": {
+                "x": { "bsonType": "int" },
+                "y": { "bsonType": "int" },
+                "width": { "bsonType": "int" },
+                "height": { "bsonType": "int" },
+                "type": { "bsonType": "string", "enum": ["wall", "destructible", "trap"] },
+                "hp": { "bsonType": "int" }
+              }
+            }
+          },
+          "lootZones": {
+            "bsonType": "array",
+            "items": {
+              "bsonType": "object",
+              "required": ["x", "y", "radius"],
+              "properties": {
+                "x": { "bsonType": "int" },
+                "y": { "bsonType": "int" },
+                "radius": { "bsonType": "int" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "collection": "items",
+    "description": "Vật phẩm rơi ra trong map (Loot, Kích hoạt)",
+    "validation": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["itemId", "name", "type", "effectMultiplier"],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "itemId": { "bsonType": "string" },
+          "name": { "bsonType": "string" },
+          "type": { "bsonType": "string", "enum": ["consumable", "active", "weapon_upgrade"] },
+          "effectMultiplier": { "bsonType": "double" },
+          "duration": { "bsonType": "int" },
+          "spawnWeight": { "bsonType": "int" }
+        }
+      }
+    }
+  },
+  {
+    "collection": "telemetry",
+    "description": "Dữ liệu thô thu thập từ game gửi cho AI Deep Learning",
+    "validation": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["roomCode", "wave", "apm", "avgAccuracy", "hpLossRate"],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "roomCode": { "bsonType": "string" },
+          "wave": { "bsonType": "int" },
+          "apm": { "bsonType": "double", "description": "Actions Per Minute của tổ đội" },
+          "avgAccuracy": { "bsonType": "double" },
+          "hpLossRate": { "bsonType": "double", "description": "Máu mất mỗi giây" },
+          "clearTime": { "bsonType": "int" },
+          "recordedAt": { "bsonType": "date" }
+        }
+      }
+    }
+  },
+  {
+    "collection": "ai_difficulty",
+    "description": "Tham số độ khó do Deep Learning trả về",
+    "validation": {
+      "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["roomCode", "wave", "zombieSpeedMultiplier", "eliteSpawnChance", "resourceScarcity"],
+        "properties": {
+          "_id": { "bsonType": "objectId" },
+          "roomCode": { "bsonType": "string" },
+          "wave": { "bsonType": "int" },
+          "zombieSpeedMultiplier": { "bsonType": "double", "minimum": 0.5, "maximum": 3.0 },
+          "eliteSpawnChance": { "bsonType": "double", "minimum": 0.0, "maximum": 1.0 },
+          "resourceScarcity": { "bsonType": "double", "minimum": 0.0, "maximum": 1.0 },
+          "generatedAt": { "bsonType": "date" }
+        }
+      }
+    }
+  }
+]
