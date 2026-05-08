@@ -1,9 +1,13 @@
 <template>
   <div class="app-container" @click="handleFirstInteraction">
     <!-- Global Background Music -->
-    <audio ref="bgAudio" loop>
-      <source src="/audio/Perimeter_Breach.mp3" type="audio/mpeg">
+    <audio ref="bgAudio" loop :muted="store.isMuted">
+      <source src="/audio/Iron_Underfoot.mp3" type="audio/mpeg">
     </audio>
+
+    <button class="global-mute-btn" @click="store.isMuted = !store.isMuted" title="Tắt/Bật tiếng">
+      {{ store.isMuted ? '🔇' : '🔊' }}
+    </button>
     <LoginScreen v-if="store.currentScreen === 'login'" />
     <LobbyScreen v-if="store.currentScreen === 'lobby'" />
     <RoomWaitingScreen v-if="store.currentScreen === 'room_waiting'" />
@@ -21,8 +25,8 @@
     <!-- Disconnect overlay -->
     <div v-if="store.isDisconnected" class="disconnect-overlay">
       <div class="disconnect-box">
-        <div class="disconnect-title">Mat ket noi</div>
-        <div class="disconnect-sub">Dang thu ket noi lai...</div>
+        <div class="disconnect-title">Mất kết nối</div>
+        <div class="disconnect-sub">Đang thử kết nối lại...</div>
         <div class="disconnect-spinner"></div>
       </div>
     </div>
@@ -66,6 +70,12 @@ const updateAudioPlayback = (screen) => {
 
 watch(() => store.currentScreen, (newScreen) => {
   updateAudioPlayback(newScreen);
+});
+
+watch(() => store.isMuted, (muted) => {
+  if (!bgAudio.value) return;
+  bgAudio.value.muted = muted;
+  if (!muted) updateAudioPlayback(store.currentScreen);
 });
 
 onMounted(() => {
@@ -130,5 +140,24 @@ onMounted(() => {
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.global-mute-btn {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid #555;
+  color: white;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  transition: background 0.2s;
+}
+.global-mute-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 </style>

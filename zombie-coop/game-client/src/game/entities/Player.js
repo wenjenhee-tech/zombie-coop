@@ -1,72 +1,86 @@
 import Phaser from 'phaser';
 
+const BUFF_INCREMENTS = {
+  'Speed Boost': [0.20, 0.10, 0.05],
+  'Iron Skin':   [0.25, 0.15, 0.05],
+  'Fire Ammo':   [1, 1, 1],
+  'Regen Aura':  [1.0, 0.5, 0.25],   // HP/s per stack
+  'Rapid Fire':  [0.25, 0.15, 0.10],  // fire-rate multiplier per stack
+  'Medkit Surge':[20,   15,   10]      // immediate HP per stack
+};
+
 export default class Player extends Phaser.Physics.Arcade.Sprite {
-  constructor(scene, x, y, texture = 'player') {
+  constructor(scene, x, y, texture = 'player_gunner') {
     super(scene, x, y, texture);
-    
+
     scene.add.existing(this);
     scene.physics.add.existing(this);
 
     this.setCollideWorldBounds(true);
-    this.body.setSize(32, 32);
+    this.body.setSize(28, 28);
 
-    // Default Stats (to be overridden by subclasses)
+    // Default Stats (overridden by subclasses)
     this.className = 'Base';
+    this.playerClass = 'gunner';
     this.speed = 200;
     this.maxHp = 100;
     this.hp = this.maxHp;
     this.damage = 15;
-    this.fireRate = 150; // ms
+    this.fireRate = 150;
     this.color = 0x00ff00;
 
     // Buffs
-    this.activeBuffs = [];
+    this.activeBuffs = {};
+    this.buffValues = {};
 
-    // Graphics
-    this.graphics = scene.add.graphics();
-    this.drawPlayer();
-    
+    // Weapon graphics layer (rotates toward mouse, drawn on top)
+    this.weaponGraphics = scene.add.graphics();
+    this._redrawWeapon();
+
     // Setup input
     this.cursors = scene.input.keyboard.addKeys({
-      up: Phaser.Input.Keyboard.KeyCodes.W,
-      down: Phaser.Input.Keyboard.KeyCodes.S,
-      left: Phaser.Input.Keyboard.KeyCodes.A,
-      right: Phaser.Input.Keyboard.KeyCodes.D,
-      primarySkill: Phaser.Input.Keyboard.KeyCodes.Q,
+      up:             Phaser.Input.Keyboard.KeyCodes.W,
+      down:           Phaser.Input.Keyboard.KeyCodes.S,
+      left:           Phaser.Input.Keyboard.KeyCodes.A,
+      right:          Phaser.Input.Keyboard.KeyCodes.D,
+      primarySkill:   Phaser.Input.Keyboard.KeyCodes.Q,
       secondarySkill: Phaser.Input.Keyboard.KeyCodes.E
     });
-    
+
     // Skill cooldown tracking
-    this.lastPrimaryUsed = 0;
-    this.primaryCooldown = 5000; // ms
+    this.lastPrimaryUsed   = 0;
+    this.primaryCooldown   = 5000;
     this.lastSecondaryUsed = 0;
-    this.secondaryCooldown = 5000; // ms
+    this.secondaryCooldown = 5000;
   }
 
-  drawPlayer() {
-    this.graphics.clear();
-    this.graphics.fillStyle(this.color, 1);
-    this.graphics.fillCircle(0, 0, 16);
-    this.graphics.lineStyle(2, 0xffffff, 1);
-    this.graphics.strokeCircle(0, 0, 16);
+  // Subclasses override to draw their weapon shape
+  _redrawWeapon() {
+    const g = this.weaponGraphics;
+    g.clear();
+    // Default barrel (forward = right)
+    g.fillStyle(0x444444, 1);
+    g.fillRect(10, -3, 14, 6);
+    g.fillStyle(0x222222, 1);
+    g.fillRect(22, -4, 4, 8);
   }
 
   update(time, delta) {
     if (!this.active) return;
     this.handleMovement();
-    this.updateGraphicsPosition();
+    this._updateFacingAnim();
     this.handleRotation();
-    
-    // Passive skill ticks (if any)
+
     this.passiveTick(time);
-    
+    this._basePassive(time);
+
     if (Phaser.Input.Keyboard.JustDown(this.cursors.primarySkill)) {
       if (time > this.lastPrimaryUsed + this.primaryCooldown) {
         this.usePrimarySkill();
         this.lastPrimaryUsed = time;
       }
     }
-    
+
     if (Phaser.Input.Keyboard.JustDown(this.cursors.secondarySkill)) {
       if (time > this.lastSecondaryUsed + this.secondaryCooldown) {
         this.useSecondarySkill();
@@ -76,63 +90,68 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   handleMovement() {
-    let velocityX = 0;
-    let velocityY = 0;
+    let vx = 0, vy = 0;
+    if (this.cursors.left.isDown)  vx = -1;
+    else if (this.cursors.right.isDown) vx = 1;
+    if (this.cursors.up.isDown)    vy = -1;
+    else if (this.cursors.down.isDown)  vy = 1;
 
-    if (this.cursors.left.isDown) velocityX = -1;
-    else if (this.cursors.right.isDown) velocityX = 1;
+    const vec = new Phaser.Math.Vector2(vx, vy).normalize();
+    let spd = this.speed;
+    spd *= (1 + this.getBuffValue('Speed Boost'));
+    this.setVelocity(vec.x * spd, vec.y * spd);
+  }
 
-    if (this.cursors.up.isDown) velocityY = -1;
-    else if (this.cursors.down.isDown) velocityY = 1;
+  _updateFacingAnim() {
+    const vx = this.body.velocity.x;
+    const vy = this.body.velocity.y;
+    const moving = Math.abs(vx) > 10 || Math.abs(vy) > 10;
 
-    const vector = new Phaser.Math.Vector2(velocityX, velocityY).normalize();
-    // Apply speed multipliers from buffs if any
-    let currentSpeed = this.speed;
-    if (this.hasBuff('Speed Boost')) currentSpeed *= 1.2;
+    if (!moving) {
+      this.anims.stop();
+      return;
+    }
 
-    this.setVelocity(vector.x * currentSpeed, vector.y * currentSpeed);
+    const dir = Math.abs(vx) > Math.abs(vy)
+      ? (vx > 0 ? 'right' : 'left')
+      : (vy > 0 ? 'down'  : 'up');
+
+    const key = `player_${this.playerClass}_walk_${dir}`;
+    if (this.anims.currentAnim?.key !== key) this.play(key);
   }
 
   handleRotation() {
     const pointer = this.scene.input.activePointer;
     const angle = Phaser.Math.Angle.Between(this.x, this.y, pointer.worldX, pointer.worldY);
-    this.setRotation(angle);
-    this.graphics.setRotation(angle);
-  }
-
-  updateGraphicsPosition() {
-    this.graphics.setPosition(this.x, this.y);
+    // Body does NOT rotate — only weapon layer tracks the mouse
+    this.weaponGraphics.setPosition(this.x, this.y);
+    this.weaponGraphics.setRotation(angle);
+    this._redrawWeapon();
   }
 
   takeDamage(amount) {
-    if (this.hasBuff('Iron Skin')) amount *= 0.75; // 25% reduction
-    
+    amount *= (1 - this.getBuffValue('Iron Skin'));
+
     this.hp -= amount;
     if (this.hp <= 0) {
       this.hp = 0;
       this.die();
-      return; // Không flash effect nữa, graphics đã bị destroy
+      return;
     }
-    
-    this.graphics.clear();
-    this.graphics.fillStyle(0xff0000, 1);
-    this.graphics.fillCircle(0, 0, 16);
-    
-    this.scene.time.delayedCall(100, () => {
-      if (this.active) this.drawPlayer();
-    });
+
+    this.setTint(0xff5555);
+    this.scene.time.delayedCall(100, () => { if (this.active) this.clearTint(); });
   }
-  
+
   heal(amount) {
     this.hp = Math.min(this.hp + amount, this.maxHp);
   }
 
   die() {
     console.log(`${this.className} Died!`);
-    // Disable thay vì destroy để có thể respawn (revive)
     this.setActive(false);
     this.setVisible(false);
-    if (this.graphics) this.graphics.setVisible(false);
+    this.weaponGraphics.setVisible(false);
     if (this.body) {
       this.body.setVelocity(0, 0);
       this.body.enable = false;
@@ -143,36 +162,62 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.hp = hp;
     this.setActive(true);
     this.setVisible(true);
-    if (this.graphics) this.graphics.setVisible(true);
+    this.clearTint();
+    this.weaponGraphics.setVisible(true);
     if (this.body) {
       this.body.enable = true;
       this.body.reset(x, y);
     } else {
       this.setPosition(x, y);
     }
-    this.drawPlayer();
     this.lastHit = 0;
   }
 
-  usePrimarySkill() {
-    console.log(`${this.className} used primary skill!`);
-  }
-  
-  useSecondarySkill() {
-    console.log(`${this.className} used secondary skill!`);
-  }
+  usePrimarySkill()   { console.log(`${this.className} used primary skill!`); }
+  useSecondarySkill() { console.log(`${this.className} used secondary skill!`); }
+  passiveTick(_time)  {}
 
-  passiveTick(time) {
-    // Override in subclasses
-  }
-
-  addBuff(buffId) {
-    if (!this.activeBuffs.includes(buffId)) {
-      this.activeBuffs.push(buffId);
+  _basePassive(time) {
+    if (this.hasBuff('Regen Aura') && time > (this.lastHit || 0) + 5000) {
+      if (!this._lastRegen || time > this._lastRegen + 1000) {
+        this._lastRegen = time;
+        this.heal(this.getBuffValue('Regen Aura'));
+      }
     }
   }
 
-  hasBuff(buffId) {
-    return this.activeBuffs.includes(buffId);
+  addBuff(buffId) {
+    const current = this.activeBuffs[buffId] || 0;
+    const inc = BUFF_INCREMENTS[buffId];
+    if (!inc) {
+      this.activeBuffs[buffId] = 1;
+      return;
+    }
+    if (current >= inc.length) return;
+    const value = inc[current];
+    this.activeBuffs[buffId] = current + 1;
+    this.buffValues[buffId]  = (this.buffValues[buffId] || 0) + value;
+    if (buffId === 'Medkit Surge') this.heal(value); // immediate heal
   }
+
+  removeBuff(buffId) {
+    if (!this.activeBuffs[buffId]) return;
+    const inc = BUFF_INCREMENTS[buffId];
+    if (!inc) {
+      delete this.activeBuffs[buffId];
+      return;
+    }
+    const current = this.activeBuffs[buffId];
+    if (current > 0) {
+      const value = inc[current - 1];
+      this.activeBuffs[buffId] = current - 1;
+      this.buffValues[buffId] = (this.buffValues[buffId] || 0) - value;
+      if (this.activeBuffs[buffId] <= 0) {
+        delete this.activeBuffs[buffId];
+      }
+    }
+  }
+
+  hasBuff(buffId) { return (this.activeBuffs[buffId] || 0) > 0; }
+  getBuffValue(buffId) { return this.buffValues[buffId] || 0; }
 }

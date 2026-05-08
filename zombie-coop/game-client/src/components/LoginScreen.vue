@@ -10,21 +10,21 @@
       </div>
       
       <div class="tabs">
-        <div class="tab" :class="{ active: isLogin }" @click="isLogin = true">LOGIN</div>
-        <div class="tab" :class="{ active: !isLogin }" @click="isLogin = false">REGISTER</div>
+        <div class="tab" :class="{ active: isLogin }" @click="isLogin = true">ĐĂNG NHẬP</div>
+        <div class="tab" :class="{ active: !isLogin }" @click="isLogin = false">ĐĂNG KÝ</div>
       </div>
 
       <div class="form">
         <div class="input-group">
-          <label>NICKNAME</label>
-          <input type="text" v-model="nickname" placeholder="Enter your alias..." />
+          <label>TÊN NGƯỜI DÙNG</label>
+          <input type="text" v-model="nickname" placeholder="Nhập tên hiệu..." />
         </div>
         <div class="input-group">
-          <label>PASSWORD</label>
+          <label>MẬT KHẨU</label>
           <input type="password" v-model="password" placeholder="••••••••" />
         </div>
         <div class="input-group" v-if="!isLogin">
-          <label>CONFIRM PASSWORD</label>
+          <label>XÁC NHẬN MẬT KHẨU</label>
           <input type="password" v-model="confirmPassword" placeholder="••••••••" />
         </div>
         
@@ -37,7 +37,7 @@
 
         <button class="btn-primary" @click="handleSubmit" :disabled="isLoading">
           <span v-if="isLoading" class="spinner"></span>
-          <span v-else>{{ isLogin ? 'CONNECT TO SERVER' : 'CREATE ACCOUNT' }}</span>
+          <span v-else>{{ isLogin ? 'KẾT NỐI MÁY CHỦ' : 'TẠO TÀI KHOẢN' }}</span>
         </button>
       </div>
     </div>

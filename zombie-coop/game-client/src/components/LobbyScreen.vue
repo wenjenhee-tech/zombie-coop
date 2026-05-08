@@ -11,13 +11,13 @@
           <p>Level {{ store.playerStats.waves }} Survivor</p>
         </div>
       </div>
-      <button class="btn-outline" @click="store.setScreen('login')">LOGOUT</button>
+      <button class="btn-outline" @click="store.setScreen('login')">ĐĂNG XUẤT</button>
     </div>
 
     <div class="content">
       <!-- CLASS SELECTION -->
       <div class="panel class-panel">
-        <h2 class="panel-title">SELECT CLASS</h2>
+        <h2 class="panel-title">CHỌN NGHỀ</h2>
         <div class="class-grid">
           <div
             v-for="c in classes"
@@ -76,41 +76,41 @@
       <!-- PUBLIC ROOMS -->
       <div class="panel room-panel">
         <div class="panel-header">
-          <h2 class="panel-title">PUBLIC ZONES</h2>
+          <h2 class="panel-title">PHÒNG CÔNG KHAI</h2>
           <div class="create-actions">
             <select v-model="selectedDifficulty" class="difficulty-select">
-              <option value="easy">EASY</option>
-              <option value="normal">NORMAL</option>
-              <option value="hard">HARD</option>
+              <option value="easy">DỄ</option>
+              <option value="normal">BÌNH THƯỜNG</option>
+              <option value="hard">KHÓ</option>
             </select>
-            <button class="btn-create" @click="createRoom">CREATE ZONE</button>
+            <button class="btn-create" @click="createRoom">TẠO PHÒNG</button>
           </div>
         </div>
         
         <div class="room-list">
           <div v-if="store.publicRooms.length === 0" class="room-empty">
-            Khong co phong nao dang mo. Hay tao phong moi!
+            Không có phòng nào đang mở. Hãy tạo phòng mới!
           </div>
           <div v-for="room in store.publicRooms" :key="room.id" class="room-row">
             <div class="room-info">
-              <h4>Zone #{{ room.id }} <span class="host-badge">Host: {{ room.name }}</span></h4>
-              <p>Wave {{ room.wave }} · {{ room.difficulty ? room.difficulty.toUpperCase() : 'NORMAL' }}</p>
+              <h4>Phòng #{{ room.id }} <span class="host-badge">CHỦ: {{ room.name }}</span></h4>
+              <p>Wave {{ room.wave }} · {{ difficultyVi(room.difficulty) }}</p>
             </div>
             <div class="room-status">
-              <span class="player-count">{{ room.players }}/{{ room.maxPlayers }}</span>
+              <span class="player-count">{{ room.players.length }}/{{ room.maxPlayers }}</span>
               <button 
                 class="btn-join" 
-                :disabled="room.players >= room.maxPlayers || store.joinRequestStatus === 'pending'"
+                :disabled="room.players.length >= room.maxPlayers || store.joinRequestStatus === 'pending'"
                 @click="requestJoin(room.id)"
               >
-                {{ store.joinRequestStatus === 'pending' && selectedRoom === room.id ? 'REQUESTING...' : 'JOIN' }}
+                {{ store.joinRequestStatus === 'pending' && selectedRoom === room.id ? 'ĐANG YÊU CẦU...' : 'THAM GIA' }}
               </button>
             </div>
           </div>
         </div>
         
         <div v-if="store.joinRequestStatus === 'pending'" class="status-box">
-          <span class="spinner"></span> Waiting for host approval...
+          <span class="spinner"></span> Đang chờ chủ phòng duyệt...
         </div>
       </div>
     </div>
@@ -121,10 +121,13 @@
 import { ref, computed } from 'vue';
 import { store } from '../store.js';
 
+const DIFFICULTY_VI = { EASY: 'DỄ', NORMAL: 'BÌNH THƯỜNG', HARD: 'KHÓ' };
+const difficultyVi = (d) => DIFFICULTY_VI[(d ?? '').toUpperCase()] ?? (d ?? '').toUpperCase();
+
 const classes = [
   {
     id: 'gunner', name: 'Gunner', icon: '🔫',
-    desc: 'Sát thương cao, bắn nhanh', role: 'DPS',
+    desc: 'Sát thương cao, bắn nhanh', role: 'Sát thương',
     stats: { hp: 80, speed: 210, dmg: 35 },
     skills: [
       { key: 'Q', name: 'Mưa Đạn', desc: 'Xuyên giáp, tốc độ đạn ×2 trong 3 giây' },
@@ -133,7 +136,7 @@ const classes = [
   },
   {
     id: 'tank', name: 'Tank', icon: '🛡️',
-    desc: 'Máu trâu, giáp dày', role: 'Tank',
+    desc: 'Máu trâu, giáp dày', role: 'Tanker',
     stats: { hp: 150, speed: 150, dmg: 20 },
     skills: [
       { key: 'Q', name: 'Khiên Thép', desc: 'Giảm 60% sát thương nhận trong 5 giây' },
@@ -143,7 +146,7 @@ const classes = [
   },
   {
     id: 'medic', name: 'Medic', icon: '💉',
-    desc: 'Hồi máu cho đồng đội', role: 'Support',
+    desc: 'Hồi máu cho đồng đội', role: 'Hỗ trợ',
     stats: { hp: 90, speed: 230, dmg: 15 },
     skills: [
       { key: 'Q', name: 'Cứu Thương', desc: 'Hồi 30 HP cho bản thân và đồng đội xung quanh' },
@@ -152,7 +155,7 @@ const classes = [
   },
   {
     id: 'trapper', name: 'Trapper', icon: '🪤',
-    desc: 'Đặt mìn, kiểm soát đám đông', role: 'Control',
+    desc: 'Đặt mìn, kiểm soát đám đông', role: 'Kiểm soát',
     stats: { hp: 85, speed: 230, dmg: 15 },
     skills: [
       { key: 'Q', name: 'Bãi Mìn', desc: 'Đặt 5 mìn AoE gây sát thương vùng' },

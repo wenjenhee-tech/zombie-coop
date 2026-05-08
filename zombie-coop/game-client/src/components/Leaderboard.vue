@@ -18,7 +18,7 @@
 
     <div v-else-if="isLoading" class="loading-state">
       <div class="loading-spinner"></div>
-      <p>Dang tai du lieu...</p>
+      <p>Đang tải dữ liệu...</p>
     </div>
 
     <div v-else class="list">

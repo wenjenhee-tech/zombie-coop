@@ -44,8 +44,8 @@
           </div>
           
           <div class="card-stats">
-            <div class="row"><span>Kills</span> <strong>{{ p.kills }}</strong></div>
-            <div class="row"><span>{{ p.revives !== undefined ? 'Revives' : 'Lần chết' }}</span> <strong>{{ p.revives !== undefined ? p.revives : p.deaths }}</strong></div>
+            <div class="row"><span>Tiêu diệt</span> <strong>{{ p.kills }}</strong></div>
+            <div class="row"><span>{{ p.revives !== undefined ? 'Hồi sinh' : 'Lần chết' }}</span> <strong>{{ p.revives !== undefined ? p.revives : p.deaths }}</strong></div>
             <div class="row"><span>Điểm</span> <strong>{{ p.score.toLocaleString() }}</strong></div>
             
             <div class="special-stat">

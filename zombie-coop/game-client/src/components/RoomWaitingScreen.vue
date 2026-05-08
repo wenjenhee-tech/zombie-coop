@@ -5,12 +5,12 @@
     
     <div class="header">
       <div class="room-info">
-        <h2>ZONE #{{ store.currentRoomDetails.id }}</h2>
-        <span class="difficulty-badge" :class="store.currentRoomDetails.difficulty.toLowerCase()">
-          {{ store.currentRoomDetails.difficulty.toUpperCase() }}
+        <h2>PHÒNG #{{ store.currentRoomDetails?.id || '...' }}</h2>
+        <span class="difficulty-badge" :class="(store.currentRoomDetails?.difficulty || 'normal').toLowerCase()">
+          {{ { EASY: 'DỄ', NORMAL: 'BÌNH THƯỜNG', HARD: 'KHÓ' }[(store.currentRoomDetails?.difficulty || 'normal').toUpperCase()] || 'BÌNH THƯỜNG' }}
         </span>
       </div>
-      <button class="btn-outline" @click="leaveRoom">LEAVE ZONE</button>
+      <button class="btn-outline" @click="leaveRoom">RỜI PHÒNG</button>
     </div>
 
     <div class="content">
@@ -33,7 +33,7 @@
           </template>
           <template v-else>
             <div class="slot-empty">
-              <span>WAITING...</span>
+              <span>ĐANG CHỜ...</span>
             </div>
           </template>
         </div>
@@ -42,32 +42,42 @@
       <div class="action-bar">
         <p class="status-text">
           {{ store.currentRoomDetails.isHost
-            ? 'Ready to start!'
-            : 'Waiting for host to start...' }}
+            ? 'Sẵn sàng bắt đầu!'
+            : 'Chờ chủ phòng bắt đầu...' }}
         </p>
         <button
           class="btn-primary"
           :disabled="!store.currentRoomDetails.isHost"
           @click="startGame"
         >
-          START GAME
+          BẮT ĐẦU
         </button>
       </div>
     </div>
   </div>
 </template>
 
-<script setup>
+<script>
 import { store } from '../store.js';
 
-const leaveRoom = () => {
-  store.socket.emit('leave_room', store.currentRoomDetails.id);
-  store.setScreen('lobby');
-};
+export default {
+  setup() {
+    const leaveRoom = () => {
+      store.socket.emit('leave_room', store.currentRoomDetails.id);
+      store.setScreen('lobby');
+    };
 
-const startGame = () => {
-  if (store.currentRoomDetails.isHost) {
-    store.socket.emit('start_game', store.currentRoomDetails.id);
+    const startGame = () => {
+      if (store.currentRoomDetails.isHost) {
+        store.socket.emit('start_game', store.currentRoomDetails.id);
+      }
+    };
+
+    return {
+      store,
+      leaveRoom,
+      startGame
+    };
   }
 };
 </script>

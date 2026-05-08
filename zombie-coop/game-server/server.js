@@ -228,16 +228,16 @@ io.on('connection', (socket) => {
     // data: { code, nickname, class }
     const room = activeRooms[data.code];
     if (!room || room.status !== 'waiting') {
-      socket.emit('error', 'Room does not exist or game already started');
+      socket.emit('error', 'Phòng không tồn tại hoặc trò chơi đã bắt đầu');
       return;
     }
     // Chặn tự join lại phòng mình
     if (room.players.find(p => p.id === socket.id)) {
-      socket.emit('error', 'You are already in this room');
+      socket.emit('error', 'Bạn đã ở trong phòng này rồi');
       return;
     }
     if (room.players.length >= 4) {
-      socket.emit('error', 'Room is full');
+      socket.emit('error', 'Phòng đã đầy');
       return;
     }
     room.players.push({ id: socket.id, nickname: data.nickname, class: data.class, isAlive: true, kills: 0, score: 0 });
@@ -450,52 +450,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // POWERUP VOTING
-
-  socket.on('cast_vote', (data) => {
-    // data: { roomCode, powerId }
-    const room = activeRooms[data.roomCode];
-    if (!room) return;
-    if (room.voteResolved) return; // không nhận thêm vote sau khi đã chốt
-    const voter = room.players.find(p => p.id === socket.id && p.isAlive);
-    if (!voter) return;
-    if (!room.votes) room.votes = {};
-    room.votes[socket.id] = data.powerId;
-
-    // Tally: count votes per powerId
-    const tally = {};
-    Object.values(room.votes).forEach(id => { tally[id] = (tally[id] || 0) + 1; });
-    io.to(data.roomCode).emit('vote_update', tally);
-
-    // If all alive players have voted, resolve immediately
-    const alivePlayers = room.players.filter(p => p.isAlive);
-    if (Object.keys(room.votes).length >= alivePlayers.length) {
-      const winnerId = Object.keys(tally).reduce((a, b) => tally[a] >= tally[b] ? a : b);
-      room.voteResolved = true;
-      io.to(data.roomCode).emit('vote_result', { winnerId });
-      room.votes = {};
-    }
-  });
-
-  // Host calls this when countdown expires without full votes
-  socket.on('finalize_vote', (roomCode) => {
-    const room = activeRooms[roomCode];
-    if (!room || socket.id !== room.hostSocketId) return;
-    if (room.voteResolved) return;
-    const tally = {};
-    Object.values(room.votes || {}).forEach(id => { tally[id] = (tally[id] || 0) + 1; });
-
-    let winnerId;
-    if (Object.keys(tally).length === 0) {
-      // No votes cast — pick first option as default
-      winnerId = null;
-    } else {
-      winnerId = Object.keys(tally).reduce((a, b) => tally[a] >= tally[b] ? a : b);
-    }
-    room.voteResolved = true;
-    io.to(roomCode).emit('vote_result', { winnerId });
-    room.votes = {};
-  });
+  // POWERUP VOTING (Removed old team vote system, kept start_next_wave)
 
   // CLASS SKILLS RELAY
 
@@ -911,15 +866,39 @@ setInterval(() => {
       .catch(e => console.warn('AI service unavailable, using default difficulty'));
 
       const POWERUP_POOL = [
-        { id: 'speed_boost', name: 'Speed Boost', desc: '+20% tốc độ di chuyển toàn đội', tier: 1 },
+        { id: 'speed_boost', name: 'Speed Boost', desc: '+20% tốc độ di chuyển', tier: 1 },
         { id: 'fire_ammo', name: 'Fire Ammo', desc: 'Đạn gây damage theo thời gian', tier: 2, isClassBonus: true, bonusText: '+15% Gunner' },
         { id: 'iron_skin', name: 'Iron Skin', desc: 'Giảm 20% damage nhận vào', tier: 2 },
         { id: 'regen_aura', name: 'Regen Aura', desc: 'Tự hồi 1HP/giây khi không bị tấn công', tier: 1 },
-        { id: 'rapid_fire', name: 'Rapid Fire', desc: '+25% tốc độ bắn toàn đội', tier: 2 },
+        { id: 'rapid_fire', name: 'Rapid Fire', desc: '+25% tốc độ bắn', tier: 2 },
         { id: 'medkit_surge', name: 'Medkit Surge', desc: 'Hồi phục 20HP ngay lập tức', tier: 1 }
       ];
-      const shuffled = POWERUP_POOL.sort(() => Math.random() - 0.5).slice(0, 3);
-      io.to(code).emit('intermission_start', { options: shuffled });
+
+      const CLASS_PREFERRED = {
+        gunner:  ['rapid_fire', 'fire_ammo'],
+        tank:    ['iron_skin', 'medkit_surge'],
+        medic:   ['regen_aura', 'medkit_surge'],
+        trapper: ['speed_boost', 'iron_skin'],
+      };
+
+      function getPersonalizedOptions(playerClass) {
+        const cls = (playerClass || '').toLowerCase();
+        const preferred = CLASS_PREFERRED[cls] || [];
+        const shuffled  = [...POWERUP_POOL].sort(() => Math.random() - 0.5);
+        // Move preferred buffs to front
+        shuffled.sort((a, b) => {
+          const ap = preferred.includes(a.id), bp = preferred.includes(b.id);
+          return ap === bp ? 0 : ap ? -1 : 1;
+        });
+        return shuffled.slice(0, 3);
+      }
+
+      room.players.forEach(p => {
+        io.to(p.id).emit('intermission_start', {
+          options: getPersonalizedOptions(p.class),
+          wave: room.currentWave
+        });
+      });
     }
   }
 }, 50);
@@ -930,16 +909,16 @@ app.post('/api/auth/register', async (req, res) => {
     const { nickname, password } = req.body;
     
     if (!nickname || !password) {
-      return res.status(400).json({ error: 'Nickname and password are required' });
+      return res.status(400).json({ error: 'Cần điền tên và mật khẩu' });
     }
     
     if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      return res.status(400).json({ error: 'Mật khẩu cần ít nhất 6 ký tự' });
     }
 
     const existingUser = await User.findOne({ nickname });
     if (existingUser) {
-      return res.status(400).json({ error: 'Nickname is already taken' });
+      return res.status(400).json({ error: 'Tên người dùng đã được sử dụng' });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -955,7 +934,7 @@ app.post('/api/auth/register', async (req, res) => {
     await newUser.save();
     
     res.status(201).json({
-      message: 'Registration successful',
+      message: 'Đăng ký thành công',
       user: {
         id: newUser._id,
         nickname: newUser.nickname,
@@ -964,7 +943,7 @@ app.post('/api/auth/register', async (req, res) => {
     });
   } catch (err) {
     console.error('Registration Error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Lỗi máy chủ' });
   }
 });
 
@@ -975,19 +954,19 @@ app.post('/api/auth/login', async (req, res) => {
     
     const user = await User.findOne({ nickname });
     if (!user) {
-      return res.status(400).json({ error: 'Invalid nickname or password' });
+      return res.status(400).json({ error: 'Tên người dùng hoặc mật khẩu không đúng' });
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid nickname or password' });
+      return res.status(400).json({ error: 'Tên người dùng hoặc mật khẩu không đúng' });
     }
 
     user.lastLoginAt = new Date();
     await user.save();
 
     res.status(200).json({
-      message: 'Login successful',
+      message: 'Đăng nhập thành công',
       user: {
         id: user._id,
         nickname: user.nickname,
@@ -996,7 +975,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Login Error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Lỗi máy chủ' });
   }
 });
 
@@ -1004,7 +983,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/scores', async (req, res) => {
   try {
     const { nickname, class: playerClass, wave, kills, score, playerCount } = req.body;
-    if (!nickname) return res.status(400).json({ error: 'nickname required' });
+    if (!nickname) return res.status(400).json({ error: 'Cần cung cấp tên người dùng' });
 
     await Score.create({ nickname, playerClass, wave, kills, score, playerCount });
 
@@ -1020,7 +999,7 @@ app.post('/api/scores', async (req, res) => {
     res.status(201).json({ message: 'Score saved' });
   } catch (err) {
     console.error('Score save error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Lỗi máy chủ' });
   }
 });
 
@@ -1059,7 +1038,7 @@ app.get('/api/leaderboard', async (req, res) => {
     res.status(200).json(leaderboard);
   } catch (err) {
     console.error('Leaderboard error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Lỗi máy chủ' });
   }
 });
 

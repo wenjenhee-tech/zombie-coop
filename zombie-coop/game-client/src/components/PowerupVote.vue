@@ -3,7 +3,7 @@
     <div class="header">
       <div class="header-text">
         <h2>Chọn power-up</h2>
-        <p>Wave {{ store.voteData.wave }} vừa kết thúc · Class: {{ store.voteData.class }} · Vote trong <span class="highlight">{{ timeLeft }}</span>s</p>
+        <p>Wave {{ store.voteData.wave }} vừa kết thúc · Class: {{ store.voteData.class }} · Chọn trong <span class="highlight">{{ timeLeft }}</span>s</p>
       </div>
       <div class="badges">
         <span class="badge blue-badge">⚡ Wave {{ store.voteData.wave }}</span>
@@ -17,40 +17,29 @@
     
     <div class="cards-container">
       <div 
-        v-for="(option, index) in store.voteData.options" 
+        v-for="option in store.voteData.options" 
         :key="option.id"
         class="card"
-        :class="{ selected: selectedIndex === index }"
-        @click="selectCard(index)"
+        :class="{ selected: store.pendingBuffId === option.id, disabled: store.pendingBuffId && store.pendingBuffId !== option.id }"
+        @click="selectCard(option)"
       >
         <div class="card-icon">{{ getIcon(option.tier) }}</div>
         <h3 :class="{'class-color': option.isClassBonus}">{{ option.name }}</h3>
         <p class="desc">{{ option.desc }}</p>
         
         <div class="tags">
-          <span class="tag" :class="'tier-' + option.tier">Tier {{ option.tier }}</span>
+          <span class="tag" :class="'tier-' + option.tier">Hạng {{ option.tier }}</span>
           <span v-if="option.isClassBonus" class="tag class-tag">{{ option.bonusText }}</span>
         </div>
         
-        <div class="votes">
-          <span class="vote-label">Votes</span>
-          <div class="vote-circles">
-            <div class="circle" :class="{ filled: (voteCounts[option.id] || 0) >= 1 }"></div>
-            <div class="circle" :class="{ filled: (voteCounts[option.id] || 0) >= 2 }"></div>
-            <div class="circle" :class="{ filled: (voteCounts[option.id] || 0) >= 3 }"></div>
-            <div class="circle" :class="{ filled: (voteCounts[option.id] || 0) >= 4 }"></div>
-          </div>
+        <div v-if="store.pendingBuffId === option.id" class="picked-check">
+          ✓ Đã chọn
         </div>
       </div>
     </div>
-    
-    <div class="active-buffs">
-      <h4>BUFF ĐANG ACTIVE</h4>
-      <div class="buff-tags">
-        <span v-for="(buff, i) in store.voteData.activeBuffs" :key="i" class="buff-tag">
-          {{ getBuffIcon(buff) }} {{ buff }}
-        </span>
-      </div>
+
+    <div v-if="store.pendingBuffId" class="waiting-text">
+      Đã chọn! Chờ wave tiếp theo…
     </div>
   </div>
 </template>
@@ -60,11 +49,6 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { store } from '../store.js';
 
 const timeLeft = ref(15);
-const selectedIndex = ref(-1);
-const voteCounts = ref({});
-const voteResolved = ref(false);
-const hasVoted = ref(false);
-const waveStartSent = ref(false);
 let timer = null;
 
 const alivePlayers = computed(() =>
@@ -75,85 +59,39 @@ const totalPlayers = computed(() => store.teammates.length + 1);
 const startTimer = () => {
   clearInterval(timer);
   timeLeft.value = 15;
-  voteResolved.value = false;
-  hasVoted.value = false;
-  waveStartSent.value = false;
-  selectedIndex.value = -1;
-  voteCounts.value = {};
+  store.pendingBuffId = null;
   timer = setInterval(() => {
     timeLeft.value--;
     if (timeLeft.value <= 0) {
       clearInterval(timer);
-      if (!voteResolved.value && store.currentRoomDetails.isHost) {
-        store.socket.emit('finalize_vote', store.currentRoomDetails.id);
+      if (store.currentRoomDetails.isHost) {
+        store.socket.emit('start_next_wave', store.currentRoomDetails.id);
       }
     }
   }, 1000);
 };
 
-const onVoteUpdate = (tally) => {
-  voteCounts.value = { ...tally };
-};
-
-const onVoteResult = ({ winnerId }) => {
-  if (voteResolved.value) return; // Chống gọi nhiều lần
-  voteResolved.value = true;
-  clearInterval(timer);
-  store.voteData.winner = winnerId;
-  if (winnerId) {
-    const winnerOpt = store.voteData.options.find(o => o.id === winnerId);
-    if (winnerOpt && !store.voteData.activeBuffs.includes(winnerOpt.name)) {
-      store.voteData.activeBuffs.push(winnerOpt.name);
-    }
-  }
-  if (store.currentRoomDetails.isHost && !waveStartSent.value) {
-    waveStartSent.value = true;
-    setTimeout(() => {
-      store.socket.emit('start_next_wave', store.currentRoomDetails.id);
-    }, 2000);
-  }
-};
-
 onMounted(() => {
-  store.socket.on('vote_update', onVoteUpdate);
-  store.socket.on('vote_result', onVoteResult);
   startTimer();
 });
 
-// Reset timer every time vote screen is shown (wave 2+)
 watch(() => store.currentScreen, (screen) => {
   if (screen === 'vote') startTimer();
 });
 
 onUnmounted(() => {
   clearInterval(timer);
-  store.socket.off('vote_update', onVoteUpdate);
-  store.socket.off('vote_result', onVoteResult);
 });
 
-const selectCard = (index) => {
-  if (voteResolved.value || hasVoted.value) return; // đã chốt hoặc đã vote — bỏ qua
-  hasVoted.value = true;
-  selectedIndex.value = index;
-  const option = store.voteData.options[index];
-  if (option) {
-    store.socket.emit('cast_vote', {
-      roomCode: store.playerStats.roomCode,
-      powerId: option.id
-    });
-  }
+const selectCard = (option) => {
+  if (store.pendingBuffId) return; // already picked
+  store.pendingBuffId = option.id;
 };
 
 const getIcon = (tier) => {
   if (tier === 1) return '⚡';
   if (tier === 2) return '🔥';
   return '💥';
-};
-
-const getBuffIcon = (buff) => {
-  if (buff.includes('Speed')) return '⚡';
-  if (buff.includes('Iron')) return '🛡';
-  return '✨';
 };
 </script>
 
@@ -221,7 +159,7 @@ const getBuffIcon = (buff) => {
 .cards-container {
   display: flex;
   gap: 20px;
-  margin-bottom: 40px;
+  margin-bottom: 20px;
   flex: 1;
 }
 
@@ -236,7 +174,7 @@ const getBuffIcon = (buff) => {
   display: flex;
   flex-direction: column;
 }
-.card:hover {
+.card:hover:not(.disabled):not(.selected) {
   transform: translateY(-5px);
   border-color: #666;
 }
@@ -250,6 +188,11 @@ const getBuffIcon = (buff) => {
 }
 .card.selected .desc {
   color: #555;
+}
+.card.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(100%);
 }
 
 .card-icon {
@@ -299,65 +242,24 @@ const getBuffIcon = (buff) => {
   color: #1565c0;
 }
 
-.votes {
+.picked-check {
   margin-top: auto;
-}
-.vote-label {
-  font-size: 12px;
-  color: #888;
-  display: block;
-  margin-bottom: 8px;
-}
-.vote-circles {
+  font-weight: bold;
+  color: #2ecc71;
+  font-size: 16px;
   display: flex;
+  align-items: center;
   gap: 5px;
 }
-.circle {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background-color: #444;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-size: 12px;
+
+.waiting-text {
+  text-align: center;
+  color: #2ecc71;
+  font-size: 18px;
   font-weight: bold;
-  color: white;
-}
-.circle.filled {
-  background-color: #2ecc71;
-}
-.circle.blue-fill {
-  background-color: #3498db;
-}
-
-.card.selected .circle {
-  background-color: #ccc;
-}
-.card.selected .circle.blue-fill {
-  background-color: #3498db;
-}
-
-.active-buffs h4 {
-  font-size: 14px;
-  color: #888;
-  margin: 0 0 10px 0;
-  letter-spacing: 1px;
-}
-.buff-tags {
-  display: flex;
-  gap: 10px;
-}
-.buff-tag {
-  padding: 6px 15px;
-  border-radius: 20px;
-  background-color: #e8f5e9;
-  color: #2e7d32;
-  font-size: 14px;
-  font-weight: 500;
-}
-.buff-tag:nth-child(2) {
-  background-color: #f3e5f5;
-  color: #7b1fa2;
+  padding: 15px;
+  background: rgba(46, 204, 113, 0.1);
+  border-radius: 8px;
+  border: 1px solid #2ecc71;
 }
 </style>

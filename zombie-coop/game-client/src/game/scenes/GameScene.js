@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Gunner, Tank, Medic, Trapper } from '../entities/PlayerClasses';
 import Zombie from '../entities/Zombie';
 import { store } from '../../store';
+import { generateAllTextures, registerAnims } from '../PixelArtTextures';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -11,9 +12,14 @@ export default class GameScene extends Phaser.Scene {
   preload() {
     this.load.audio('shoot', '/audio/sfx/shoot.mp3');
     this.load.audio('zombie_die', '/audio/sfx/zombie.mp3');
+    this.load.audio('zombie_hit', '/audio/sfx/zombie.wav');
   }
 
   create() {
+    // Generate all pixel-art textures + register walk animations
+    generateAllTextures(this);
+    registerAnims(this);
+
     // Set world bounds to 3200x3200
     this.physics.world.setBounds(0, 0, 1600, 1600);
     this.cameras.main.setBounds(0, 0, 1600, 1600);
@@ -46,12 +52,13 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.zombies, this.handleZombieHitPlayer, null, this);
     this.physics.add.collider(this.zombies, this.zombies); // Zombies don't overlap
 
-    // Draw grid background
-    this.addGrid();
+    // Draw grass background
+    this.addGrassBackground();
 
     // Static obstacle walls
     this.obstacles = this.physics.add.staticGroup();
     this.addObstacles(store.currentRoomDetails.wallData || []);
+    this.addDecorations();
     this.physics.add.collider(this.player, this.obstacles);
     this.physics.add.collider(this.zombies, this.obstacles);
     this.physics.add.collider(this.bullets, this.obstacles, (bullet) => {
@@ -102,8 +109,27 @@ export default class GameScene extends Phaser.Scene {
       velocityY: 0
     });
 
+    this._wasMoving = false;
+    this.time.addEvent({
+      delay: 2000, loop: true,
+      callback: () => {
+        if (this.player?.active) {
+          store.socket.emit('player_move', { 
+            roomCode: store.playerStats.roomCode, 
+            x: this.player.x, 
+            y: this.player.y, 
+            rotation: this.player.rotation, 
+            velocityX: this.player.body.velocity.x, 
+            velocityY: this.player.body.velocity.y 
+          });
+        }
+      }
+    });
+
     // Death markers cho teammate đã chết (visual ô vuông xám tại deathX/Y)
     this.deathMarkers = {};
+
+    if (store.isMuted) this.sound.setVolume(0);
   }
 
   setupMultiplayerSync() {
@@ -113,7 +139,7 @@ export default class GameScene extends Phaser.Scene {
       'zombie_took_damage', 'heal_aoe', 'shield_wall_active', 'taunt_active',
       'intermission_start', 'next_wave_started', 'difficulty_update',
       'you_are_host', 'player_revived', 'mine_placed', 'mine_exploded',
-      'exploder_exploded'
+      'exploder_exploded', 'player_died'
     ];
     events.forEach(e => store.socket.off(e));
 
@@ -122,31 +148,35 @@ export default class GameScene extends Phaser.Scene {
     store.socket.on('player_moved', (data) => {
       let other = this.otherPlayers.getChildren().find(p => p.id === data.id);
       if (!other) {
-        other = this.add.graphics();
+        const playerInfo = store.currentRoomDetails.players.find(p => p.id === data.id);
+        const cls = (playerInfo?.class || 'Gunner').toLowerCase();
+        other = this.add.sprite(data.x, data.y, `player_${cls}`);
         other.id = data.id;
         this.otherPlayers.add(other);
       }
-      const playerInfo = store.currentRoomDetails.players.find(p => p.id === data.id);
-      const color = CLASS_COLORS[playerInfo?.class] || 0x95a5a6;
-      other.clear();
-      other.fillStyle(color, 1);
-      other.fillCircle(0, 0, 16);
-      other.lineStyle(3, 0xffffff, 0.8);
-      other.strokeCircle(0, 0, 16);
       other.setPosition(data.x, data.y);
-      other.setRotation(data.rotation);
+
+      // Play walk animation based on velocity
+      const { velocityX: vx, velocityY: vy } = data;
+      const moving = Math.abs(vx) > 10 || Math.abs(vy) > 10;
+      if (moving) {
+        const cls = other.texture.key.replace('player_', '');
+        const dir = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'right' : 'left') : (vy > 0 ? 'down' : 'up');
+        const animKey = `player_${cls}_walk_${dir}`;
+        if (other.anims.currentAnim?.key !== animKey) other.play(animKey);
+      } else {
+        other.anims.stop();
+      }
     });
 
     store.socket.on('player_shot', (data) => {
-      // Visual feedback for other players shooting
-      const bulletGraphics = this.add.graphics({ x: data.x, y: data.y });
-      bulletGraphics.fillStyle(0xcccccc, 1);
-      bulletGraphics.fillCircle(0, 0, 4);
-      
-      this.physics.add.existing(bulletGraphics);
-      this.physics.velocityFromRotation(data.angle, 600, bulletGraphics.body.velocity);
-      
-      this.time.delayedCall(1000, () => bulletGraphics.destroy());
+      const b = this.add.graphics({ x: data.x, y: data.y });
+      b.fillStyle(0xcccccc, 1);
+      b.fillCircle(0, 0, 4);
+      // No physics body — purely visual tracer
+      const vx = Math.cos(data.angle) * 600;
+      const vy = Math.sin(data.angle) * 600;
+      this.tweens.add({ targets: b, x: data.x + vx, y: data.y + vy, duration: 1000, onComplete: () => b.destroy() });
     });
 
     store.socket.on('zombie_spawned', (data) => {
@@ -165,7 +195,7 @@ export default class GameScene extends Phaser.Scene {
       const zombie = this.zombies.getChildren().find(z => z.id === data.zombieId);
       if (zombie) {
         zombie.setPosition(data.x, data.y);
-        zombie.setRotation(data.rotation);
+        // Không setRotation — hướng sprite được điều khiển bằng velocity-based anim
       }
     });
 
@@ -173,6 +203,15 @@ export default class GameScene extends Phaser.Scene {
       const zombie = this.zombies.getChildren().find(z => z.id === data.zombieId);
       if (zombie) {
         zombie.takeDamage(data.damage);
+        
+        // Rate-limit để tránh spam âm thanh khi nhiều người bắn cùng lúc
+        if (this.time.now > (this._lastHitSfx || 0) + 80) {
+          if (this.cache.audio.exists('zombie_hit')) {
+            this.sound.play('zombie_hit', { volume: 0.12, detune: Phaser.Math.Between(-300, 300) });
+          }
+          this._lastHitSfx = this.time.now;
+        }
+
         if (!zombie.active) {
           if (this.cache.audio.exists('zombie_die')) this.sound.play('zombie_die', { volume: 0.4 });
           store.playerStats.kills++;
@@ -196,7 +235,7 @@ export default class GameScene extends Phaser.Scene {
         this.player.addBuff('Iron Skin');
         this.scene?.time?.delayedCall(data.duration, () => {
           if (this.player?.activeBuffs) {
-            this.player.activeBuffs = this.player.activeBuffs.filter(b => b !== 'Iron Skin');
+            this.player.removeBuff('Iron Skin');
           }
         });
       }
@@ -230,15 +269,14 @@ export default class GameScene extends Phaser.Scene {
       this.currentWave = wave;
       this.isWaveActive = true;
       this.waveText.setText(`Wave: ${wave}`);
-      // Apply voted powerup buff
-      const winnerId = store.voteData.winner;
-      if (winnerId) {
-        const winnerOpt = store.voteData.options.find(o => o.id === winnerId);
-        if (winnerOpt) this.player.addBuff(winnerOpt.name);
-        store.voteData.winner = null;
+      
+      const picked = store.pendingBuffId;
+      if (picked) {
+        const opt = store.voteData.options.find(o => o.id === picked);
+        if (opt) this.player.addBuff(opt.name);
+        store.pendingBuffId = null;
       }
       store.setScreen('game');
-      // KHÔNG emit host_ready_to_spawn ở đây vì start_next_wave đã init spawn params trên server
     });
 
     store.socket.on('difficulty_update', (params) => {
@@ -258,6 +296,10 @@ export default class GameScene extends Phaser.Scene {
         this.deathMarkers[data.targetId].destroy();
         delete this.deathMarkers[data.targetId];
       }
+      
+      const other = this.otherPlayers.getChildren().find(p => p.id === data.targetId);
+      if (other) other.setVisible(true);
+
       if (data.targetId === store.socket.id) {
         // Bản thân được hồi sinh
         if (this.player) {
@@ -316,6 +358,11 @@ export default class GameScene extends Phaser.Scene {
       const zombie = this.zombies.getChildren().find(z => z.id === data.zombieId);
       if (zombie) zombie.die();
     });
+
+    store.socket.on('player_died', (data) => {
+      const other = this.otherPlayers.getChildren().find(p => p.id === data.id);
+      if (other) other.setVisible(false);
+    });
   }
 
   addObstacles(wallData) {
@@ -372,20 +419,98 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
-  addGrid() {
-    const graphics = this.add.graphics();
-    graphics.lineStyle(1, 0x333333, 0.5);
-    for (let x = 0; x <= 1600; x += 64) {
-      graphics.moveTo(x, 0);
-      graphics.lineTo(x, 1600);
+  addGrassBackground() {
+    // Base layer — tileSprite phủ toàn bản đồ (GPU efficient)
+    this.add.tileSprite(800, 800, 1600, 1600, 'grass', 0).setDepth(-3);
+
+    // 250 patch biến thể phủ lên để phá vỡ monotone
+    let seed = 42;
+    const rng = () => {
+      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+      return (seed >>> 0) / 0x100000000;
+    };
+    for (let i = 0; i < 250; i++) {
+      const x = rng() * 1600;
+      const y = rng() * 1600;
+      const frame = 1 + Math.floor(rng() * 3); // frames 1-3 là biến thể
+      this.add.image(x, y, 'grass', frame).setDepth(-2).setAlpha(0.55);
     }
-    for (let y = 0; y <= 1600; y += 64) {
-      graphics.moveTo(0, y);
-      graphics.lineTo(1600, y);
-    }
-    graphics.strokePath();
-    // Send grid to back
-    graphics.setDepth(-1);
+  }
+
+  addDecorations() {
+    const WORLD = 1600;
+    const CENTER = 800;
+    const SAFE_R = 230; // bán kính vùng spawn trung tâm — không đặt vật gì ở đây
+
+    let seed = 1337;
+    const rng = () => {
+      seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+      return (seed >>> 0) / 0x100000000;
+    };
+
+    const placed = [];
+
+    const isSafe = (x, y, r) => {
+      // Không đặt trong vùng spawn trung tâm
+      const dx = x - CENTER, dy = y - CENTER;
+      if (Math.sqrt(dx * dx + dy * dy) < SAFE_R) return false;
+      // Không đặt quá sát viền map
+      if (x < 70 || x > WORLD - 70 || y < 70 || y > WORLD - 70) return false;
+      // Không đặt chồng lên vật đã đặt trước
+      return placed.every(p => {
+        const ddx = p.x - x, ddy = p.y - y;
+        return Math.sqrt(ddx * ddx + ddy * ddy) >= p.r + r + 10;
+      });
+    };
+
+    const tryPlace = (count, r, fn) => {
+      let placed_count = 0, attempts = 0;
+      while (placed_count < count && attempts++ < count * 40) {
+        const x = 70 + rng() * (WORLD - 140);
+        const y = 70 + rng() * (WORLD - 140);
+        if (isSafe(x, y, r)) {
+          fn(x, y);
+          placed.push({ x, y, r });
+          placed_count++;
+        }
+      }
+    };
+
+    // --- Cây (18 cây, collidable) ---
+    tryPlace(18, 26, (x, y) => {
+      this.add.image(x, y, 'tree').setDepth(1);
+
+      const body = this.physics.add.staticImage(x, y, null);
+      body.setVisible(false).setActive(true);
+      body.body.setSize(28, 28);
+      body.refreshBody();
+      this.obstacles.add(body);
+    });
+
+    // --- Đá (10 tảng, collidable) ---
+    tryPlace(10, 18, (x, y) => {
+      this.add.image(x, y, 'rock').setDepth(1);
+
+      const body = this.physics.add.staticImage(x, y, null);
+      body.setVisible(false).setActive(true);
+      body.body.setSize(22, 16);
+      body.refreshBody();
+      this.obstacles.add(body);
+    });
+
+    // --- Hồ nước (5 hồ, decorative only — không có physics) ---
+    tryPlace(5, 30, (x, y) => {
+      const water = this.add.image(x, y, 'water', 0).setDepth(-1).setAlpha(0.8);
+      let frame = 0;
+      this.time.addEvent({
+        delay: 1400 + Math.floor(rng() * 800),
+        loop: true,
+        callback: () => {
+          frame = 1 - frame;
+          water.setFrame(frame);
+        }
+      });
+    });
   }
 
   shoot(pointer) {
@@ -420,7 +545,9 @@ export default class GameScene extends Phaser.Scene {
       bullet.damage = this.player.damage;
 
       // Play SFX
-      if (this.cache.audio.exists('shoot')) this.sound.play('shoot', { volume: 0.3 });
+      if (this.cache.audio.exists('shoot')) {
+        this.sound.play('shoot', { volume: 0.25, detune: Phaser.Math.Between(-100, 100) });
+      }
 
       // Auto destroy bullet after 2 seconds
       this.time.delayedCall(2000, () => {
@@ -450,6 +577,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+    this.sound.setVolume(store.isMuted ? 0 : 1);
+
     if (this.player && this.player.active) {
       this.player.update(time, delta);
       
@@ -466,7 +595,8 @@ export default class GameScene extends Phaser.Scene {
       store.playerStats.secondaryCooldownMs = this.player.secondaryCooldown;
 
       // Emit movement
-      if (this.player.body.velocity.x !== 0 || this.player.body.velocity.y !== 0) {
+      const isMoving = this.player.body.velocity.x !== 0 || this.player.body.velocity.y !== 0;
+      if (isMoving) {
         store.socket.emit('player_move', {
           roomCode: store.playerStats.roomCode,
           x: this.player.x,
@@ -475,6 +605,17 @@ export default class GameScene extends Phaser.Scene {
           velocityX: this.player.body.velocity.x,
           velocityY: this.player.body.velocity.y
         });
+        this._wasMoving = true;
+      } else if (this._wasMoving) {
+        store.socket.emit('player_move', { 
+          roomCode: store.playerStats.roomCode, 
+          x: this.player.x, 
+          y: this.player.y, 
+          rotation: this.player.rotation, 
+          velocityX: 0, 
+          velocityY: 0 
+        });
+        this._wasMoving = false;
       }
 
     }
@@ -504,7 +645,6 @@ export default class GameScene extends Phaser.Scene {
       if (!this.player.piercingShots) {
         bullet.setActive(false);
         bullet.setVisible(false);
-        bullet.destroy(); 
       }
       
       // Chỉ gửi lên server — server sẽ broadcast zombie_took_damage về cho tất cả
@@ -565,6 +705,7 @@ export default class GameScene extends Phaser.Scene {
   handlePlayerDeath() {
     store.playerStats.isAlive = false;
     store.socket.emit('player_died', { roomCode: store.playerStats.roomCode });
+    this.cameras.main.stopFollow();
     store.setScreen('spectator');
   }
 

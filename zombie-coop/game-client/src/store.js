@@ -26,6 +26,8 @@ export const store = reactive({
     shotsHit: 0
   },
   
+  pendingBuffId: null,
+
   voteData: {
     wave: 1,
     class: 'Gunner',
@@ -56,6 +58,7 @@ export const store = reactive({
   leaderboard: [],
   remainingZombies: 0,
   isDisconnected: false,
+  isMuted: false,
 
   currentRoomDetails: {
     id: '',
@@ -172,7 +175,7 @@ socket.on('game_over', (data) => {
       deaths: p.isAlive ? 0 : 1,
       score: p.score || 0,
       accuracy: isYou ? accuracy : Math.min(99, Math.floor(Math.random() * 35 + 45)),
-      statName: 'Accuracy'
+      statName: 'Chính xác'
     };
   });
 

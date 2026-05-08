@@ -47,7 +47,7 @@
       <div class="stats-grid">
         <div class="stat-box">
           <div class="value">{{ store.playerStats.kills }}</div>
-          <div class="label">Kills</div>
+          <div class="label">Tiêu diệt</div>
         </div>
         <div class="stat-box">
           <div class="value">{{ store.playerStats.waves }}</div>
@@ -65,7 +65,7 @@
     </div>
     
     <div class="revive-alert">
-      Ban se tu dong hoi sinh khi wave ket thuc (50 HP).
+      Bạn sẽ tự động hồi sinh khi wave kết thúc (50 HP).
     </div>
   </div>
 </template>
