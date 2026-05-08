@@ -2,8 +2,7 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 
-// Đổi URI này nếu bạn dùng MongoDB Atlas hoặc port khác
-const MONGO_URI = 'mongodb://127.0.0.1:27017/zombie_coop'; 
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/zombie_coop';
 
 async function setupDatabase() {
   try {

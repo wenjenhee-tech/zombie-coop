@@ -8,7 +8,6 @@
         "required": [
           "nickname",
           "passwordHash",
-          "stats",
           "createdAt"
         ],
         "properties": {
@@ -18,7 +17,6 @@
           "avatar": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper"] },
           "stats": {
             "bsonType": "object",
-            "required": ["bestWave", "totalGames", "totalKills", "totalScore"],
             "properties": {
               "bestWave": { "bsonType": "int", "minimum": 0 },
               "totalGames": { "bsonType": "int", "minimum": 0 },
@@ -47,18 +45,16 @@
         "bsonType": "object",
         "required": [
           "code",
-          "hostId",
-          "isPrivate",
           "status",
           "difficulty",
           "currentWave",
-          "players",
-          "updatedAt"
+          "players"
         ],
         "properties": {
           "_id": { "bsonType": "objectId" },
           "code": { "bsonType": "string", "minLength": 6, "maxLength": 6 },
           "hostId": { "bsonType": "objectId" },
+          "hostName": { "bsonType": "string" },
           "isPrivate": { "bsonType": "bool" },
           "status": { "bsonType": "string", "enum": ["waiting", "playing", "finished"] },
           "difficulty": { "bsonType": "string", "enum": ["EASY", "NORMAL", "HARD"] },
@@ -68,9 +64,10 @@
             "maxItems": 4,
             "items": {
               "bsonType": "object",
-              "required": ["userId", "class", "hp", "isAlive"],
+              "required": ["nickname", "class", "hp", "isAlive"],
               "properties": {
                 "userId": { "bsonType": "objectId" },
+                "nickname": { "bsonType": "string" },
                 "class": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper"] },
                 "hp": { "bsonType": "int", "minimum": 0, "maximum": 500 },
                 "isAlive": { "bsonType": "bool" }
@@ -89,56 +86,27 @@
   },
   {
     "collection": "scores",
-    "description": "Kết quả sau mỗi game — dùng cho leaderboard và stats",
+    "description": "Kết quả sau mỗi game cho từng cá nhân (1 document / 1 người chơi)",
     "validation": {
       "$jsonSchema": {
         "bsonType": "object",
-        "required": [
-          "roomCode",
-          "wavesCleared",
-          "totalKills",
-          "durationSeconds",
-          "result",
-          "players",
-          "createdAt"
-        ],
+        "required": ["nickname", "wave", "kills", "score", "playerCount", "playedAt"],
         "properties": {
           "_id": { "bsonType": "objectId" },
-          "roomCode": { "bsonType": "string", "minLength": 6, "maxLength": 6 },
-          "wavesCleared": { "bsonType": "int", "minimum": 0 },
-          "totalKills": { "bsonType": "int", "minimum": 0 },
-          "totalScore": { "bsonType": "int", "minimum": 0 },
-          "durationSeconds": { "bsonType": "int", "minimum": 0 },
-          "result": { "bsonType": "string", "enum": ["win", "lose"] },
-          "players": {
-            "bsonType": "array",
-            "minItems": 1,
-            "maxItems": 4,
-            "items": {
-              "bsonType": "object",
-              "required": ["userId", "kills", "class", "survived", "score"],
-              "properties": {
-                "userId": { "bsonType": "objectId" },
-                "kills": { "bsonType": "int", "minimum": 0 },
-                "score": { "bsonType": "int", "minimum": 0 },
-                "class": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper"] },
-                "survived": { "bsonType": "bool" },
-                "isMVP": { "bsonType": "bool" },
-                "accuracy": { "bsonType": "double" },
-                "damageBlock": { "bsonType": "double" },
-                "healDone": { "bsonType": "double" },
-                "revives": { "bsonType": "int" }
-              }
-            }
-          },
-          "powerupsUsed": { "bsonType": "array" },
-          "createdAt": { "bsonType": "date" }
+          "nickname": { "bsonType": "string" },
+          "playerClass": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper", "Gunner", "Tank", "Medic", "Trapper"] },
+          "wave": { "bsonType": "int", "minimum": 1 },
+          "kills": { "bsonType": "int", "minimum": 0 },
+          "score": { "bsonType": "int", "minimum": 0 },
+          "playerCount": { "bsonType": "int", "minimum": 1 },
+          "playedAt": { "bsonType": "date" }
         }
       }
     },
     "indexes": [
-      { "keys": { "wavesCleared": -1, "createdAt": -1 }, "options": { "name": "leaderboard" } },
-      { "keys": { "players.userId": 1 }, "options": { "name": "per_user_history" } }
+      { "keys": { "nickname": 1 }, "options": { "name": "idx_nickname" } },
+      { "keys": { "wave": -1 }, "options": { "name": "idx_wave" } },
+      { "keys": { "score": -1 }, "options": { "name": "idx_score" } }
     ]
   },
   {
