@@ -19,6 +19,10 @@ export class Gunner extends Player {
     this.piercingShots  = false;
     this.bulletSpeedMult = 1;
     this.critChance     = 0.2; // Nội tại "Sát Thủ": 20% chí mạng ×2 dmg
+
+    // Sprite Gunner redesign ở 48px → hitbox khớp thân nhìn thấy (rộng 24, cao 34),
+    // tự canh giữa frame. Chỉ đổi vùng va chạm, KHÔNG đổi speed/hp/damage.
+    this.body.setSize(24, 34);
   }
 
   _redrawWeapon() {
@@ -98,6 +102,9 @@ export class Tank extends Player {
     this.tertiaryCooldown  = 16000;
     this.hitCount = 0;
     this.thornsRatio = 0.3; // Nội tại "Phản Đòn": dội 30% dmg về zombie tấn công
+
+    // Sprite Tank redesign 48px (to nặng) → hitbox khớp thân. Chỉ vùng va chạm.
+    this.body.setSize(28, 34);
   }
 
   _redrawWeapon() {
@@ -176,6 +183,8 @@ export class Medic extends Player {
     this.primaryCooldown   = 20000;
     this.secondaryCooldown = 30000;
     this.tertiaryCooldown  = 22000;
+
+    this.body.setSize(24, 34); // sprite 48px → hitbox khớp thân
   }
 
   _redrawWeapon() {
@@ -255,6 +264,8 @@ export class Trapper extends Player {
     this.primaryCooldown   = 20000;
     this.secondaryCooldown = 12000;
     this.tertiaryCooldown  = 15000;
+
+    this.body.setSize(24, 34); // sprite 48px → hitbox khớp thân
   }
 
   _redrawWeapon() {

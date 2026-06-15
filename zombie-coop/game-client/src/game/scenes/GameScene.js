@@ -68,6 +68,7 @@ export default class GameScene extends Phaser.Scene {
     this.obstacles = this.physics.add.staticGroup();
     this.addObstacles(store.currentRoomDetails.wallData || []);
     this.addDecorations();
+    this.addNightMood();
     this.physics.add.collider(this.player, this.obstacles);
     this.physics.add.collider(this.zombies, this.obstacles);
     this.physics.add.collider(this.bullets, this.obstacles, (bullet) => {
@@ -398,45 +399,44 @@ export default class GameScene extends Phaser.Scene {
   addObstacles(wallData) {
     wallData.forEach(({ x, y, w, h }) => {
       const g = this.add.graphics();
-      
-      // Shadow
-      g.fillStyle(0x111111, 0.5);
-      g.fillRect(3, 3, w, h);
-      
-      // Main body — gradient look with lighter top
-      g.fillStyle(0x555555, 1);
+
+      // Bóng đổ
+      g.fillStyle(0x000000, 0.45);
+      g.fillRect(3, 4, w, h);
+
+      // Thân bê-tông — gradient sáng trên → tối dưới
+      g.fillGradientStyle(0x4a4f57, 0x4a4f57, 0x2b2f35, 0x2b2f35, 1);
       g.fillRect(0, 0, w, h);
-      
-      // Top highlight edge
-      g.fillStyle(0x777777, 1);
-      g.fillRect(0, 0, w, 3);
-      g.fillRect(0, 0, 3, h);
-      
-      // Bottom/right dark edge
-      g.fillStyle(0x333333, 1);
-      g.fillRect(0, h - 3, w, 3);
-      g.fillRect(w - 3, 0, 3, h);
-      
-      // Inner detail lines (for larger walls)
+
+      // Cạnh sáng trên / tối dưới
+      g.fillStyle(0x5c626b, 1); g.fillRect(0, 0, w, 2);
+      g.fillStyle(0x1c1f23, 1); g.fillRect(0, h - 3, w, 3);
+
+      // Vết gỉ sét loang
+      g.fillStyle(0x6b4326, 0.45); g.fillCircle(w * 0.28, h * 0.32, Math.min(w, h) * 0.16);
+      g.fillStyle(0x4d3019, 0.40); g.fillCircle(w * 0.72, h * 0.66, Math.min(w, h) * 0.12);
+
+      // Vết nứt
+      g.lineStyle(1, 0x17181b, 0.75);
+      g.beginPath();
+      g.moveTo(w * 0.35, 2); g.lineTo(w * 0.45, h * 0.5); g.lineTo(w * 0.38, h - 2);
+      g.strokePath();
+
+      // Vạch cảnh báo hazard (vàng/đen) cho tường lớn
       if (w > 60 || h > 60) {
-        g.lineStyle(1, 0x4a4a4a, 0.6);
-        if (w > h) {
-          // Horizontal wall — vertical ribs
-          for (let rx = 20; rx < w; rx += 20) {
-            g.lineBetween(rx, 4, rx, h - 4);
-          }
-        } else {
-          // Vertical wall — horizontal ribs
-          for (let ry = 20; ry < h; ry += 20) {
-            g.lineBetween(4, ry, w - 4, ry);
-          }
+        const horiz = w > h;
+        const len = horiz ? w : h;
+        for (let s = 0; s < len; s += 7) {
+          g.fillStyle(((s / 7) | 0) % 2 ? 0x141414 : 0xc9a01f, 0.9);
+          if (horiz) g.fillRect(s, 3, 7, 5);
+          else       g.fillRect(3, s, 5, 7);
         }
       }
-      
-      // Outer border
-      g.lineStyle(1, 0x2a2a2a, 1);
+
+      // Viền ngoài
+      g.lineStyle(1, 0x0f1012, 1);
       g.strokeRect(0, 0, w, h);
-      
+
       g.setPosition(x, y);
       g.setDepth(1);
 
@@ -450,20 +450,20 @@ export default class GameScene extends Phaser.Scene {
   }
 
   addGrassBackground() {
-    // Base layer — tileSprite phủ toàn bản đồ (GPU efficient)
-    this.add.tileSprite(800, 800, 1600, 1600, 'grass', 0).setDepth(-3);
+    // Nền nhựa đường phủ toàn map (tileSprite — 1 draw-call)
+    this.add.tileSprite(800, 800, 1600, 1600, 'asphalt', 0).setDepth(-3);
 
-    // 250 patch biến thể phủ lên để phá vỡ monotone
+    // ~200 mảng biến thể (nứt / vết dầu / vạch kẻ) rải bằng RNG-có-seed
     let seed = 42;
     const rng = () => {
       seed = (seed * 1664525 + 1013904223) & 0xffffffff;
       return (seed >>> 0) / 0x100000000;
     };
-    for (let i = 0; i < 250; i++) {
+    for (let i = 0; i < 200; i++) {
       const x = rng() * 1600;
       const y = rng() * 1600;
       const frame = 1 + Math.floor(rng() * 3); // frames 1-3 là biến thể
-      this.add.image(x, y, 'grass', frame).setDepth(-2).setAlpha(0.55);
+      this.add.image(x, y, 'asphalt', frame).setDepth(-2).setAlpha(0.7);
     }
   }
 
@@ -479,6 +479,7 @@ export default class GameScene extends Phaser.Scene {
     };
 
     const placed = [];
+    const walls = store.currentRoomDetails.wallData || [];
 
     const isSafe = (x, y, r) => {
       // Không đặt trong vùng spawn trung tâm
@@ -486,10 +487,16 @@ export default class GameScene extends Phaser.Scene {
       if (Math.sqrt(dx * dx + dy * dy) < SAFE_R) return false;
       // Không đặt quá sát viền map
       if (x < 70 || x > WORLD - 70 || y < 70 || y > WORLD - 70) return false;
-      // Không đặt chồng lên vật đã đặt trước
+      // Không đè lên TƯỜNG (server wallData) — tránh 2 body vật lý chồng nhau
+      for (const wl of walls) {
+        const nx = Math.max(wl.x, Math.min(x, wl.x + wl.w));
+        const ny = Math.max(wl.y, Math.min(y, wl.y + wl.h));
+        if (Math.hypot(x - nx, y - ny) < r + 14) return false;
+      }
+      // Không đè lên vật đã đặt trước (margin rộng hơn cho gọn vật lý)
       return placed.every(p => {
         const ddx = p.x - x, ddy = p.y - y;
-        return Math.sqrt(ddx * ddx + ddy * ddy) >= p.r + r + 10;
+        return Math.sqrt(ddx * ddx + ddy * ddy) >= p.r + r + 16;
       });
     };
 
@@ -506,19 +513,19 @@ export default class GameScene extends Phaser.Scene {
       }
     };
 
-    // --- Cây (18 cây, collidable) ---
-    tryPlace(18, 26, (x, y) => {
-      this.add.image(x, y, 'tree').setDepth(1);
+    // --- Xác xe cháy (9 chiếc, collidable) ---
+    tryPlace(9, 34, (x, y) => {
+      this.add.image(x, y, 'wreck').setDepth(1).setAngle(Math.floor(rng() * 4) * 90);
 
       const body = this.physics.add.staticImage(x, y, null);
       body.setVisible(false).setActive(true);
-      body.body.setSize(28, 28);
+      body.body.setSize(34, 34);
       body.refreshBody();
       this.obstacles.add(body);
     });
 
-    // --- Đá (10 tảng, collidable) ---
-    tryPlace(10, 18, (x, y) => {
+    // --- Đống gạch vụn (7 đống, collidable) ---
+    tryPlace(7, 20, (x, y) => {
       this.add.image(x, y, 'rock').setDepth(1);
 
       const body = this.physics.add.staticImage(x, y, null);
@@ -528,19 +535,80 @@ export default class GameScene extends Phaser.Scene {
       this.obstacles.add(body);
     });
 
-    // --- Hồ nước (5 hồ, decorative only — không có physics) ---
+    // --- Vũng độc (5 vũng, decorative only — tái dùng shimmer của nước, nhuộm xanh độc) ---
     tryPlace(5, 30, (x, y) => {
-      const water = this.add.image(x, y, 'water', 0).setDepth(-1).setAlpha(0.8);
+      const puddle = this.add.image(x, y, 'water', 0).setDepth(-1).setAlpha(0.85).setTint(0x6fae2e);
       let frame = 0;
       this.time.addEvent({
         delay: 1400 + Math.floor(rng() * 800),
         loop: true,
         callback: () => {
           frame = 1 - frame;
-          water.setFrame(frame);
+          puddle.setFrame(frame);
         }
       });
     });
+
+    // --- Đèn đường (6 cây, collidable ở chân cột, có quầng sáng ấm rọi xuống đường) ---
+    tryPlace(6, 26, (x, y) => {
+      // Quầng sáng trên mặt đất — blend ADD để "rọi" xuyên qua lớp bóng đêm
+      this.add.image(x, y - 6, 'lightpool')
+        .setDepth(-0.45)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setAlpha(0.9);
+      this.add.image(x, y, 'streetlight').setDepth(1);
+
+      const body = this.physics.add.staticImage(x, y + 8, null);
+      body.setVisible(false).setActive(true);
+      body.body.setSize(12, 12);
+      body.refreshBody();
+      this.obstacles.add(body);
+    });
+
+    // --- Thùng phuy (6 cái, collidable, ~35% là thùng độc phát sáng) ---
+    tryPlace(6, 18, (x, y) => {
+      const toxic = rng() < 0.35 ? 1 : 0;
+      this.add.image(x, y, 'barrel', toxic).setDepth(1);
+
+      const body = this.physics.add.staticImage(x, y + 4, null);
+      body.setVisible(false).setActive(true);
+      body.body.setSize(14, 18);
+      body.refreshBody();
+      this.obstacles.add(body);
+    });
+
+    // --- Decal máu/cháy (14 vệt, phẳng, KHÔNG physics, được phép đè lên nhau) ---
+    for (let i = 0; i < 14; i++) {
+      const dx = 80 + rng() * (WORLD - 160);
+      const dy = 80 + rng() * (WORLD - 160);
+      const f  = rng() < 0.6 ? 0 : 1; // 60% máu, 40% cháy
+      this.add.image(dx, dy, 'decal', f)
+        .setDepth(-0.48)
+        .setAlpha(0.9)
+        .setAngle(Math.floor(rng() * 4) * 90);
+    }
+  }
+
+  // Lớp không khí "đêm tận thế": tối nền + vignette theo camera.
+  addNightMood() {
+    // Phủ tối lên các lớp NỀN (depth < 0) — đặt trên đất, dưới nhân vật/props (depth ≥ 0)
+    // → giữ nhân vật & xe đọc rõ, chỉ mặt đất chìm trong bóng đêm.
+    this.add.rectangle(800, 800, 1600, 1600, 0x0a0e1a, 0.5).setDepth(-0.5);
+
+    // Vignette tối 4 góc, bám theo camera (screen-space)
+    const camW = this.cameras.main.width;
+    const camH = this.cameras.main.height;
+    if (!this.textures.exists('vignette')) {
+      const vt = this.textures.createCanvas('vignette', camW, camH);
+      const vctx = vt.getContext('2d');
+      const grd = vctx.createRadialGradient(camW / 2, camH / 2, camH * 0.32, camW / 2, camH / 2, camH * 0.78);
+      grd.addColorStop(0, 'rgba(0,0,0,0)');
+      grd.addColorStop(1, 'rgba(0,0,0,0.7)');
+      vctx.fillStyle = grd;
+      vctx.fillRect(0, 0, camW, camH);
+      vt.refresh();
+    }
+    this.add.image(0, 0, 'vignette').setOrigin(0).setScrollFactor(0).setDepth(60);
   }
 
   shoot(pointer) {

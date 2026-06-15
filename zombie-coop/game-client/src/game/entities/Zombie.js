@@ -12,10 +12,11 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
     this.type = type;
     this.setupStats();
 
-    this.body.setSize(this.size, this.size);
-
-    // Scale up large zombies to match their logical size
-    if (this.size > 32) this.setScale(this.size / 32);
+    // Mọi zombie giờ vẽ ở texture 48px → scale theo size để hiện đúng kích thước logic
+    // (display = 48×scale = size; hitbox = 48×scale = size).
+    const TEX = 48;
+    this.body.setSize(TEX, TEX);
+    this.setScale(this.size / TEX);
 
     this.target = null;
     this.activeEffects = [];

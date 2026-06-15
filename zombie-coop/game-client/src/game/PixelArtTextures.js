@@ -36,6 +36,38 @@ function fstar(ctx, cx, cy, ro, ri, pts, col) {
   ctx.fill();
 }
 
+// ─── advanced fills (gradient shading + glow) ────────────────────────────────
+// Nguồn sáng quy ước: trên-trái → highlight lệch lên-trái, đáy tối dần.
+
+// Chữ nhật tô gradient dọc (top → bottom)
+function grect(ctx, x, y, w, h, top, bot) {
+  const g = ctx.createLinearGradient(x, y, x, y + h);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bot);
+  ctx.fillStyle = g;
+  ctx.fillRect(x | 0, y | 0, w | 0, h | 0);
+}
+
+// Tròn tô gradient xuyên tâm (sáng lệch trên-trái → tối ở rìa) → tạo khối
+function gcircle(ctx, cx, cy, r, inner, outer) {
+  const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.15, cx, cy, r);
+  g.addColorStop(0, inner);
+  g.addColorStop(1, outer);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Chạy drawFn với hiệu ứng phát sáng mềm (an toàn nhờ clip ở makeAtlas)
+function glow(ctx, color, blur, drawFn) {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = blur;
+  drawFn();
+  ctx.restore();
+}
+
 // ─── walk-offset helpers ─────────────────────────────────────────────────────
 
 // 4-frame walk → [leftLegYOff, rightLegYOff]
@@ -47,16 +79,19 @@ function wo2(f) { return f === 0 ? [-2, 1] : [1, -2]; }
 
 // ─── atlas builder ────────────────────────────────────────────────────────────
 
-function makeAtlas(scene, key, nFrames, drawFn) {
-  const ct = scene.textures.createCanvas(key, FW * nFrames, FH);
+function makeAtlas(scene, key, nFrames, drawFn, fw = FW, fh = FH) {
+  const ct = scene.textures.createCanvas(key, fw * nFrames, fh);
   const ctx = ct.getContext('2d');
-  ctx.clearRect(0, 0, FW * nFrames, FH);
+  ctx.clearRect(0, 0, fw * nFrames, fh);
   for (let i = 0; i < nFrames; i++) {
     ctx.save();
-    ctx.translate(i * FW, 0);
+    ctx.translate(i * fw, 0);
+    ctx.beginPath();
+    ctx.rect(0, 0, fw, fh);
+    ctx.clip(); // chặn glow/shadowBlur tràn sang ô frame bên cạnh
     drawFn(ctx, i);
     ctx.restore();
-    ct.add(i, 0, i * FW, 0, FW, FH);
+    ct.add(i, 0, i * fw, 0, fw, fh);
   }
   ct.refresh();
 }
@@ -65,488 +100,636 @@ function makeAtlas(scene, key, nFrames, drawFn) {
 // PLAYER DRAW FUNCTIONS  (frame = dir*4 + walkFrame)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── GUNNER — Blue armor, silver helmet ──────────────────────────────────────
+// ─── GUNNER — 48px "Survivor": hooded scavenger, gas-mask, blue glow accent ──────
+// Mood đêm tận thế: tông xám-lạnh ám màu môi trường + 1 điểm nhấn XANH (khăn + lăng
+// kính phát sáng) làm màu hiệu class & giữ readability trong horde.
+const G = {
+  OL:      '#090C14',
+  HOOD:    '#363C46', HOOD_HI: '#4C5460', HOOD_DK: '#23272F',
+  JACK:    '#3A4250', JACK_HI: '#505A6A', JACK_DK: '#232830',
+  FACE:    '#12151C',
+  MASK:    '#5A626C', MASK_HI: '#79828E', MASK_DK: '#383E46',
+  STRAP:   '#5A4632', STRAP_DK: '#3C2F1F',
+  PANTS:   '#2C313B', PANTS_HI: '#3C4350',
+  BOOT:    '#14161D',
+  LENS:    '#7FE0FF', LENS_DK: '#1FA8E0',
+  ACC:     '#2E6FE0', ACC_DK: '#1B4DA8', ACC_GLOW: '#4FB8FF' // xanh nhận diện
+};
+
+// Vẽ ở khung 48×48 (lớn hơn 32 → nhân vật to & chi tiết hơn so với map).
 function drawGunner(ctx, frame) {
   const dir = (frame / 4) | 0;
-  const [lO, rO] = wo4(frame % 4);
+  const wf  = frame % 4;
+  const w4  = wo4(wf);
+  const lO  = w4[0] * 1.5;
+  const rO  = w4[1] * 1.5;
+  const bob = (wf === 1 || wf === 3) ? 1.5 : 0; // nhún người khi bước
+  const arm = [0, 3, 0, -3][wf];                // vung tay
+  const hy  = 16 + bob;                          // head center y
 
   if (dir === 0) { // DOWN — front view
-    fc(ctx, 16, 8, 8, '#858585');
-    fc(ctx, 16, 7, 6, '#C0C0C0');
-    fc(ctx, 14, 5, 2, '#E0E0E0');       // shine
-    fr(ctx,  8,  9, 16, 4, '#1A2E90'); // visor
-    fr(ctx,  7, 14,  3, 7, '#2A56AA'); // shoulder L
-    fr(ctx, 22, 14,  3, 7, '#2A56AA'); // shoulder R
-    fr(ctx, 10, 13, 12, 12, '#3A6FD8'); // torso
-    fr(ctx, 12, 14,  8,  3, '#6090E8'); // chest plate
-    fr(ctx, 14, 18,  4,  4, '#1E3D7A'); // center detail
-    fr(ctx, 10, 25, 12,  2, '#1E3D7A'); // belt
-    fr(ctx, 10, 27 + lO, 5, 3, '#16214A');
-    fr(ctx, 17, 27 + rO, 5, 3, '#16214A');
-    fr(ctx,  9, 30 + lO, 7, 2, '#06061A'); // boot L
-    fr(ctx, 16, 30 + rO, 7, 2, '#06061A'); // boot R
+    fc(ctx, 24, hy, 15, G.OL);
+    fr(ctx, 13, 25 + bob, 22, 19, G.OL);
+    grect(ctx, 16, 40 + lO, 6, 6, G.PANTS_HI, G.PANTS);
+    grect(ctx, 26, 40 + rO, 6, 6, G.PANTS_HI, G.PANTS);
+    fr(ctx, 15, 45 + lO, 8, 3, G.BOOT);
+    fr(ctx, 25, 45 + rO, 8, 3, G.BOOT);
+    grect(ctx, 11 + arm, 26 + bob, 5, 12, G.JACK, G.JACK_DK);
+    grect(ctx, 32 - arm, 26 + bob, 5, 12, G.JACK, G.JACK_DK);
+    grect(ctx, 14, 25 + bob, 20, 17, G.JACK_HI, G.JACK);
+    fr(ctx, 14, 25 + bob, 20, 2, G.JACK_DK);
+    fr(ctx, 18, 26 + bob, 3, 16, G.STRAP);
+    fr(ctx, 27, 26 + bob, 3, 16, G.STRAP);
+    fr(ctx, 15, 37 + bob, 18, 4, G.STRAP_DK);   // ammo belt
+    fr(ctx, 17, 38 + bob, 2, 2, G.MASK_HI);
+    fr(ctx, 29, 38 + bob, 2, 2, G.MASK_HI);
+    gcircle(ctx, 24, hy, 14, G.HOOD_HI, G.HOOD); // mũ trùm
+    fc(ctx, 24, hy + 2, 10, G.FACE);             // hốc mặt tối
+    fr(ctx, 16, 23 + bob, 16, 3, G.ACC);         // khăn xanh
+    fr(ctx, 16, 25 + bob, 16, 1, G.ACC_DK);
+    grect(ctx, 17, hy - 3, 14, 11, G.MASK_HI, G.MASK); // mặt nạ
+    fr(ctx, 17, hy - 3, 14, 1, G.MASK_DK);
+    fc(ctx, 24, hy + 8, 4, G.MASK);              // hộp lọc
+    fc(ctx, 24, hy + 8, 2.3, G.MASK_DK);
+    glow(ctx, G.ACC_GLOW, 5, () => {             // lăng kính phát sáng
+      fc(ctx, 20, hy + 1, 3, G.LENS);
+      fc(ctx, 28, hy + 1, 3, G.LENS);
+    });
+    fc(ctx, 20, hy + 1, 1.5, G.LENS_DK);
+    fc(ctx, 28, hy + 1, 1.5, G.LENS_DK);
+    fc(ctx, 19.2, hy + 0.2, 0.9, '#ffffff');
+    fc(ctx, 27.2, hy + 0.2, 0.9, '#ffffff');
+    fc(ctx, 17, hy - 7, 3, G.HOOD_HI);           // rìa mũ sáng
 
   } else if (dir === 1) { // UP — back view
-    fc(ctx, 16, 8, 8, '#6E6E6E');
-    fc(ctx, 16, 6, 5, '#A0A0A0');
-    fr(ctx,  9, 12, 14, 2, '#101C60'); // strap
-    fr(ctx,  7, 14,  3, 7, '#2A56AA');
-    fr(ctx, 22, 14,  3, 7, '#2A56AA');
-    fr(ctx, 10, 13, 12, 12, '#2A5DC8');
-    fr(ctx, 12, 15,  8,  6, '#1A3898'); // backpack
-    fr(ctx, 13, 22,  6,  2, '#3A70D0'); // backpack stripe
-    fr(ctx, 10, 25, 12,  2, '#1E3D7A');
-    fr(ctx, 10, 27 + lO, 5, 3, '#16214A');
-    fr(ctx, 17, 27 + rO, 5, 3, '#16214A');
-    fr(ctx,  9, 30 + lO, 7, 2, '#06061A');
-    fr(ctx, 16, 30 + rO, 7, 2, '#06061A');
+    fc(ctx, 24, hy, 15, G.OL);
+    fr(ctx, 13, 25 + bob, 22, 19, G.OL);
+    grect(ctx, 16, 40 + lO, 6, 6, G.PANTS_HI, G.PANTS);
+    grect(ctx, 26, 40 + rO, 6, 6, G.PANTS_HI, G.PANTS);
+    fr(ctx, 15, 45 + lO, 8, 3, G.BOOT);
+    fr(ctx, 25, 45 + rO, 8, 3, G.BOOT);
+    grect(ctx, 11 + arm, 26 + bob, 5, 12, G.JACK, G.JACK_DK);
+    grect(ctx, 32 - arm, 26 + bob, 5, 12, G.JACK, G.JACK_DK);
+    grect(ctx, 14, 25 + bob, 20, 17, G.JACK_HI, G.JACK);
+    grect(ctx, 16, 27 + bob, 16, 13, G.JACK_DK, '#1A1E25'); // balo
+    fr(ctx, 16, 27 + bob, 16, 1, G.JACK_HI);
+    glow(ctx, G.ACC_GLOW, 4, () => fr(ctx, 21, 31 + bob, 6, 3, G.ACC)); // tag xanh
+    gcircle(ctx, 24, hy, 14, G.HOOD_HI, G.HOOD);
+    fr(ctx, 19, hy + 6, 10, 3, G.HOOD_DK);       // cổ mũ
+    fc(ctx, 17, hy - 7, 3, G.HOOD_HI);
 
   } else if (dir === 2) { // LEFT
-    fc(ctx, 14, 8, 8, '#858585');
-    fc(ctx, 13, 7, 6, '#C0C0C0');
-    fr(ctx,  6,  9, 15, 4, '#1A2E90');
-    fr(ctx,  6, 14,  4, 8, '#2A56AA'); // fwd shoulder
-    fr(ctx, 22, 14,  3, 6, '#2A56AA'); // back shoulder
-    fr(ctx,  8, 13, 14, 12, '#3A6FD8');
-    fr(ctx,  9, 14,  9,  3, '#6090E8');
-    fr(ctx,  8, 25, 14,  2, '#1E3D7A');
-    fr(ctx, 11, 27 + lO, 5, 3, '#16214A');
-    fr(ctx, 17, 27 + rO, 5, 3, '#16214A');
-    fr(ctx, 10, 30 + lO, 7, 2, '#06061A');
-    fr(ctx, 16, 30 + rO, 7, 2, '#06061A');
+    fc(ctx, 22, hy, 14, G.OL);
+    fr(ctx, 13, 25 + bob, 21, 19, G.OL);
+    grect(ctx, 16, 40 + lO, 6, 6, G.PANTS_HI, G.PANTS);
+    grect(ctx, 24, 40 + rO, 6, 6, G.PANTS_HI, G.PANTS);
+    fr(ctx, 14, 45 + lO, 8, 3, G.BOOT);
+    fr(ctx, 23, 45 + rO, 8, 3, G.BOOT);
+    fr(ctx, 28, 27 + bob, 5, 11, G.JACK_DK);     // tay sau
+    grect(ctx, 14, 25 + bob, 19, 17, G.JACK_HI, G.JACK);
+    fr(ctx, 14, 26 + bob, 4, 14, G.STRAP);
+    grect(ctx, 11 + arm, 28 + bob, 5, 10, G.JACK, G.JACK_DK); // tay trước
+    gcircle(ctx, 22, hy, 14, G.HOOD_HI, G.HOOD);
+    fc(ctx, 18, hy + 2, 9, G.FACE);
+    fr(ctx, 13, 23 + bob, 16, 3, G.ACC);         // khăn
+    grect(ctx, 9, hy - 2, 12, 9, G.MASK_HI, G.MASK);
+    fc(ctx, 10, hy + 6, 3.5, G.MASK);            // hộp lọc phía trước
+    fc(ctx, 10, hy + 6, 2, G.MASK_DK);
+    glow(ctx, G.ACC_GLOW, 5, () => fc(ctx, 14, hy + 1, 3, G.LENS));
+    fc(ctx, 14, hy + 1, 1.5, G.LENS_DK);
+    fc(ctx, 13.2, hy + 0.2, 0.9, '#ffffff');
+    fc(ctx, 20, hy - 7, 3, G.HOOD_HI);
 
   } else { // RIGHT
-    fc(ctx, 18, 8, 8, '#858585');
-    fc(ctx, 19, 7, 6, '#C0C0C0');
-    fr(ctx, 11,  9, 15, 4, '#1A2E90');
-    fr(ctx,  7, 14,  3, 6, '#2A56AA');
-    fr(ctx, 22, 14,  4, 8, '#2A56AA');
-    fr(ctx, 10, 13, 14, 12, '#3A6FD8');
-    fr(ctx, 14, 14,  9,  3, '#6090E8');
-    fr(ctx, 10, 25, 14,  2, '#1E3D7A');
-    fr(ctx, 10, 27 + lO, 5, 3, '#16214A');
-    fr(ctx, 17, 27 + rO, 5, 3, '#16214A');
-    fr(ctx,  9, 30 + lO, 7, 2, '#06061A');
-    fr(ctx, 16, 30 + rO, 7, 2, '#06061A');
+    fc(ctx, 26, hy, 14, G.OL);
+    fr(ctx, 14, 25 + bob, 21, 19, G.OL);
+    grect(ctx, 18, 40 + lO, 6, 6, G.PANTS_HI, G.PANTS);
+    grect(ctx, 26, 40 + rO, 6, 6, G.PANTS_HI, G.PANTS);
+    fr(ctx, 17, 45 + lO, 8, 3, G.BOOT);
+    fr(ctx, 26, 45 + rO, 8, 3, G.BOOT);
+    fr(ctx, 15, 27 + bob, 5, 11, G.JACK_DK);     // tay sau
+    grect(ctx, 15, 25 + bob, 19, 17, G.JACK_HI, G.JACK);
+    fr(ctx, 30, 26 + bob, 4, 14, G.STRAP);
+    grect(ctx, 32 - arm, 28 + bob, 5, 10, G.JACK, G.JACK_DK); // tay trước
+    gcircle(ctx, 26, hy, 14, G.HOOD_HI, G.HOOD);
+    fc(ctx, 30, hy + 2, 9, G.FACE);
+    fr(ctx, 19, 23 + bob, 16, 3, G.ACC);
+    grect(ctx, 27, hy - 2, 12, 9, G.MASK_HI, G.MASK);
+    fc(ctx, 38, hy + 6, 3.5, G.MASK);
+    fc(ctx, 38, hy + 6, 2, G.MASK_DK);
+    glow(ctx, G.ACC_GLOW, 5, () => fc(ctx, 34, hy + 1, 3, G.LENS));
+    fc(ctx, 34, hy + 1, 1.5, G.LENS_DK);
+    fc(ctx, 34.8, hy + 0.2, 0.9, '#ffffff');
+    fc(ctx, 28, hy - 7, 3, G.HOOD_HI);
   }
 }
 
-// ─── TANK — Red armor, wide, gray shield sides ────────────────────────────────
+// ─── TANK — 48px "Riot Bulwark": survivor giáp bạo động, đỏ, to nặng ─────────────
+const TK = {
+  OL: '#0A0C12',
+  ARMOR: '#4a3f3a', ARMOR_HI: '#5f524b', ARMOR_DK: '#2a2420',
+  PLATE: '#5a5f66', PLATE_HI: '#7a818b', PLATE_DK: '#34383f',
+  PANTS: '#2b2e35', BOOT: '#14151b',
+  ACC: '#d23b2e', ACC_DK: '#8e2018', ACC_GLOW: '#ff5a3c', VISOR: '#ff6a4d'
+};
 function drawTank(ctx, frame) {
-  const dir = (frame / 4) | 0;
-  const [lO, rO] = wo4(frame % 4);
-  const isDown = dir === 0;
-  const isUp   = dir === 1;
+  const dir = (frame / 4) | 0, wf = frame % 4, w4 = wo4(wf);
+  const lO = w4[0] * 1.5, rO = w4[1] * 1.5;
+  const bob = (wf === 1 || wf === 3) ? 1.5 : 0, arm = [0, 3, 0, -3][wf], hy = 16 + bob;
 
-  // Head always large-ish square helmet
-  if (isDown) {
-    fr(ctx,  6,  4, 20, 10, '#AA1A1A'); // helmet
-    fr(ctx,  8,  5, 16,  4, '#CC3333'); // helmet highlight
-    fr(ctx,  7,  8, 18,  4, '#5A0000'); // visor slit
-    fr(ctx,  8,  9,  4,  2, '#FF4444'); // left eye
-    fr(ctx, 20,  9,  4,  2, '#FF4444'); // right eye
-  } else if (isUp) {
-    fr(ctx,  6,  4, 20, 10, '#881414');
-    fr(ctx,  8,  5, 16,  3, '#AA2222');
-    fr(ctx,  8, 11,  6,  2, '#5A0000'); // back vents L
-    fr(ctx, 18, 11,  6,  2, '#5A0000'); // back vents R
-  } else if (dir === 2) { // left
-    fr(ctx,  5,  4, 18, 10, '#AA1A1A');
-    fr(ctx,  6,  5, 12,  4, '#CC3333');
-    fr(ctx,  5,  8, 14,  3, '#5A0000');
-    fr(ctx,  6,  9,  3,  2, '#FF4444');
-  } else { // right
-    fr(ctx,  9,  4, 18, 10, '#AA1A1A');
-    fr(ctx, 14,  5, 12,  4, '#CC3333');
-    fr(ctx, 13,  8, 14,  3, '#5A0000');
-    fr(ctx, 23,  9,  3,  2, '#FF4444');
+  if (dir === 0) { // DOWN
+    fc(ctx, 24, hy, 15, TK.OL);
+    fr(ctx, 9, 24 + bob, 30, 20, TK.OL);
+    grect(ctx, 16, 41 + lO, 7, 6, TK.PANTS, '#1b1d23');
+    grect(ctx, 25, 41 + rO, 7, 6, TK.PANTS, '#1b1d23');
+    fr(ctx, 15, 46 + lO, 9, 2, TK.BOOT); fr(ctx, 25, 46 + rO, 9, 2, TK.BOOT);
+    grect(ctx, 8 + arm, 26 + bob, 6, 14, TK.ARMOR, TK.ARMOR_DK);
+    grect(ctx, 34 - arm, 26 + bob, 6, 14, TK.ARMOR, TK.ARMOR_DK);
+    fr(ctx, 8 + arm, 33 + bob, 6, 3, TK.PLATE); fr(ctx, 34 - arm, 33 + bob, 6, 3, TK.PLATE);
+    grect(ctx, 13, 25 + bob, 22, 17, TK.ARMOR_HI, TK.ARMOR);
+    grect(ctx, 9, 23 + bob, 10, 8, TK.PLATE_HI, TK.PLATE_DK);  // pauldron
+    grect(ctx, 29, 23 + bob, 10, 8, TK.PLATE_HI, TK.PLATE_DK);
+    grect(ctx, 16, 27 + bob, 16, 12, TK.PLATE, TK.PLATE_DK);   // chest plate
+    fr(ctx, 16, 27 + bob, 16, 1, TK.PLATE_HI);
+    fr(ctx, 19, 28 + bob, 2, 12, TK.ARMOR_DK); fr(ctx, 27, 28 + bob, 2, 12, TK.ARMOR_DK);
+    glow(ctx, TK.ACC_GLOW, 3, () => fr(ctx, 22, 31 + bob, 4, 4, TK.ACC)); // emblem đỏ
+    fr(ctx, 23, 32 + bob, 2, 2, TK.ACC_DK);
+    gcircle(ctx, 24, hy, 13, TK.PLATE_HI, TK.PLATE);           // mũ bạo động
+    fr(ctx, 12, hy + 1, 24, 7, TK.OL);                         // hốc kính
+    glow(ctx, TK.ACC_GLOW, 5, () => fr(ctx, 14, hy + 3, 20, 3, TK.VISOR)); // khe kính đỏ
+    fr(ctx, 14, hy + 3, 20, 1, '#ffd2c4');
+    fc(ctx, 18, hy - 6, 3, TK.PLATE_HI);
+    fr(ctx, 15, hy + 8, 18, 2, TK.PLATE_DK);
+
+  } else if (dir === 1) { // UP
+    fc(ctx, 24, hy, 15, TK.OL);
+    fr(ctx, 9, 24 + bob, 30, 20, TK.OL);
+    grect(ctx, 16, 41 + lO, 7, 6, TK.PANTS, '#1b1d23');
+    grect(ctx, 25, 41 + rO, 7, 6, TK.PANTS, '#1b1d23');
+    fr(ctx, 15, 46 + lO, 9, 2, TK.BOOT); fr(ctx, 25, 46 + rO, 9, 2, TK.BOOT);
+    grect(ctx, 8 + arm, 26 + bob, 6, 14, TK.ARMOR, TK.ARMOR_DK);
+    grect(ctx, 34 - arm, 26 + bob, 6, 14, TK.ARMOR, TK.ARMOR_DK);
+    grect(ctx, 13, 25 + bob, 22, 17, TK.ARMOR_HI, TK.ARMOR);
+    grect(ctx, 9, 23 + bob, 10, 8, TK.PLATE_HI, TK.PLATE_DK);
+    grect(ctx, 29, 23 + bob, 10, 8, TK.PLATE_HI, TK.PLATE_DK);
+    grect(ctx, 16, 26 + bob, 16, 14, TK.PLATE_DK, '#22252b');  // khiên sau lưng
+    fr(ctx, 16, 26 + bob, 16, 1, TK.PLATE);
+    glow(ctx, TK.ACC_GLOW, 3, () => fr(ctx, 22, 30 + bob, 4, 6, TK.ACC));
+    gcircle(ctx, 24, hy, 13, TK.PLATE_HI, TK.PLATE);
+    fc(ctx, 18, hy - 6, 3, TK.PLATE_HI);
+    fr(ctx, 15, hy + 6, 18, 2, TK.PLATE_DK);
+
+  } else if (dir === 2) { // LEFT
+    fc(ctx, 22, hy, 14, TK.OL);
+    fr(ctx, 9, 24 + bob, 28, 20, TK.OL);
+    grect(ctx, 16, 41 + lO, 7, 6, TK.PANTS, '#1b1d23');
+    grect(ctx, 24, 41 + rO, 7, 6, TK.PANTS, '#1b1d23');
+    fr(ctx, 14, 46 + lO, 9, 2, TK.BOOT); fr(ctx, 23, 46 + rO, 9, 2, TK.BOOT);
+    fr(ctx, 28, 26 + bob, 6, 13, TK.ARMOR_DK);
+    grect(ctx, 12, 25 + bob, 22, 17, TK.ARMOR_HI, TK.ARMOR);
+    grect(ctx, 10, 23 + bob, 11, 8, TK.PLATE_HI, TK.PLATE_DK);
+    grect(ctx, 8 + arm, 28 + bob, 6, 12, TK.ARMOR, TK.ARMOR_DK);
+    gcircle(ctx, 22, hy, 13, TK.PLATE_HI, TK.PLATE);
+    fr(ctx, 8, hy + 1, 16, 7, TK.OL);
+    glow(ctx, TK.ACC_GLOW, 5, () => fr(ctx, 9, hy + 3, 12, 3, TK.VISOR));
+    fc(ctx, 16, hy - 6, 3, TK.PLATE_HI);
+
+  } else { // RIGHT
+    fc(ctx, 26, hy, 14, TK.OL);
+    fr(ctx, 11, 24 + bob, 28, 20, TK.OL);
+    grect(ctx, 17, 41 + lO, 7, 6, TK.PANTS, '#1b1d23');
+    grect(ctx, 25, 41 + rO, 7, 6, TK.PANTS, '#1b1d23');
+    fr(ctx, 16, 46 + lO, 9, 2, TK.BOOT); fr(ctx, 25, 46 + rO, 9, 2, TK.BOOT);
+    fr(ctx, 14, 26 + bob, 6, 13, TK.ARMOR_DK);
+    grect(ctx, 14, 25 + bob, 22, 17, TK.ARMOR_HI, TK.ARMOR);
+    grect(ctx, 27, 23 + bob, 11, 8, TK.PLATE_HI, TK.PLATE_DK);
+    grect(ctx, 34 - arm, 28 + bob, 6, 12, TK.ARMOR, TK.ARMOR_DK);
+    gcircle(ctx, 26, hy, 13, TK.PLATE_HI, TK.PLATE);
+    fr(ctx, 24, hy + 1, 16, 7, TK.OL);
+    glow(ctx, TK.ACC_GLOW, 5, () => fr(ctx, 27, hy + 3, 12, 3, TK.VISOR));
+    fc(ctx, 20, hy - 6, 3, TK.PLATE_HI);
   }
-
-  // Shield sides + wide body
-  fr(ctx,  3, 14,  5, 10, '#9A9A9A'); // shield L
-  fr(ctx, 24, 14,  5, 10, '#9A9A9A'); // shield R
-  fr(ctx,  4, 14,  2, 10, '#C8C8C8'); // shield highlight L
-  fr(ctx, 26, 14,  2, 10, '#C8C8C8'); // shield highlight R
-  fr(ctx,  8, 14, 16, 11, '#CC2222'); // torso
-  fr(ctx, 10, 15, 12,  4, '#EE4444'); // chest plate
-  fr(ctx, 13, 20,  6,  3, '#881111'); // center bolt
-  fr(ctx,  8, 25, 16,  2, '#771111'); // belt
-
-  // Legs (short, wide)
-  fr(ctx,  9, 27 + lO, 6, 4, '#601010');
-  fr(ctx, 17, 27 + rO, 6, 4, '#601010');
-  fr(ctx,  8, 30 + lO, 8, 2, '#300808');
-  fr(ctx, 16, 30 + rO, 8, 2, '#300808');
 }
 
-// ─── MEDIC — White coat, green trim, red cross ────────────────────────────────
+// ─── MEDIC — 48px "Field Medic" survivor: mặt nạ + lăng kính lục + chữ thập ───────
+const MD = {
+  OL: '#0A0F0C',
+  COAT: '#3a4640', COAT_HI: '#4e5b53', COAT_DK: '#212a25',
+  PANTS: '#2a2f2c', BOOT: '#14191a',
+  MASK: '#5a626c', MASK_HI: '#79828e', MASK_DK: '#383e46',
+  HOOD: '#36423c', HOOD_HI: '#4c5850',
+  ACC: '#2ec26a', ACC_DK: '#1a7a40', ACC_GLOW: '#5cff9e', CROSS: '#e8efe9'
+};
 function drawMedic(ctx, frame) {
-  const dir = (frame / 4) | 0;
-  const [lO, rO] = wo4(frame % 4);
+  const dir = (frame / 4) | 0, wf = frame % 4, w4 = wo4(wf);
+  const lO = w4[0] * 1.5, rO = w4[1] * 1.5;
+  const bob = (wf === 1 || wf === 3) ? 1.5 : 0, arm = [0, 3, 0, -3][wf], hy = 16 + bob;
 
-  // Head
-  if (dir === 0) {
-    fc(ctx, 16, 8, 8, '#E0E0E0');
-    fc(ctx, 16, 7, 6, '#F5F5F5');
-    fr(ctx, 10,  9, 12, 3, '#199944'); // green headband
-    fr(ctx,  8, 10, 16, 3, '#CCCCCC'); // under headband
-    fr(ctx, 14, 10,  4, 2, '#EE2222'); // cross on headband
-  } else if (dir === 1) {
-    fc(ctx, 16, 8, 8, '#CECECE');
-    fc(ctx, 16, 6, 5, '#E8E8E8');
-    fr(ctx, 10, 10, 12, 3, '#158A3C'); // headband back
-  } else if (dir === 2) {
-    fc(ctx, 14, 8, 8, '#E0E0E0');
-    fc(ctx, 13, 7, 6, '#F5F5F5');
-    fr(ctx,  8,  9, 13, 3, '#199944');
-  } else {
-    fc(ctx, 18, 8, 8, '#E0E0E0');
-    fc(ctx, 19, 7, 6, '#F5F5F5');
-    fr(ctx, 11,  9, 13, 3, '#199944');
+  if (dir === 0) { // DOWN
+    fc(ctx, 24, hy, 15, MD.OL);
+    fr(ctx, 13, 25 + bob, 22, 19, MD.OL);
+    grect(ctx, 16, 40 + lO, 6, 6, MD.PANTS, '#191e1b');
+    grect(ctx, 26, 40 + rO, 6, 6, MD.PANTS, '#191e1b');
+    fr(ctx, 15, 45 + lO, 8, 3, MD.BOOT); fr(ctx, 25, 45 + rO, 8, 3, MD.BOOT);
+    grect(ctx, 11 + arm, 26 + bob, 5, 12, MD.COAT, MD.COAT_DK);
+    grect(ctx, 32 - arm, 26 + bob, 5, 12, MD.COAT, MD.COAT_DK);
+    grect(ctx, 14, 25 + bob, 20, 17, MD.COAT_HI, MD.COAT);
+    fr(ctx, 20, 27 + bob, 8, 12, MD.CROSS);                 // bảng trắng ngực
+    glow(ctx, MD.ACC_GLOW, 3, () => {                       // chữ thập lục
+      fr(ctx, 23, 28 + bob, 2, 9, MD.ACC); fr(ctx, 20, 31 + bob, 8, 2, MD.ACC);
+    });
+    fr(ctx, 15, 26 + bob, 2, 15, MD.ACC_DK);               // dây túi
+    gcircle(ctx, 24, hy, 14, MD.HOOD_HI, MD.HOOD);
+    fc(ctx, 24, hy + 2, 10, MD.OL);
+    grect(ctx, 17, hy - 3, 14, 11, MD.MASK_HI, MD.MASK);
+    fr(ctx, 17, hy - 3, 14, 1, MD.MASK_DK);
+    fc(ctx, 24, hy + 8, 4, MD.MASK); fc(ctx, 24, hy + 8, 2.3, MD.MASK_DK);
+    glow(ctx, MD.ACC_GLOW, 5, () => { fc(ctx, 20, hy + 1, 3, MD.ACC); fc(ctx, 28, hy + 1, 3, MD.ACC); });
+    fc(ctx, 20, hy + 1, 1.5, MD.ACC_DK); fc(ctx, 28, hy + 1, 1.5, MD.ACC_DK);
+    fc(ctx, 19.2, hy + 0.2, 0.9, '#fff'); fc(ctx, 27.2, hy + 0.2, 0.9, '#fff');
+    fc(ctx, 17, hy - 7, 3, MD.HOOD_HI);
+
+  } else if (dir === 1) { // UP
+    fc(ctx, 24, hy, 15, MD.OL);
+    fr(ctx, 13, 25 + bob, 22, 19, MD.OL);
+    grect(ctx, 16, 40 + lO, 6, 6, MD.PANTS, '#191e1b');
+    grect(ctx, 26, 40 + rO, 6, 6, MD.PANTS, '#191e1b');
+    fr(ctx, 15, 45 + lO, 8, 3, MD.BOOT); fr(ctx, 25, 45 + rO, 8, 3, MD.BOOT);
+    grect(ctx, 11 + arm, 26 + bob, 5, 12, MD.COAT, MD.COAT_DK);
+    grect(ctx, 32 - arm, 26 + bob, 5, 12, MD.COAT, MD.COAT_DK);
+    grect(ctx, 14, 25 + bob, 20, 17, MD.COAT_HI, MD.COAT);
+    grect(ctx, 16, 27 + bob, 16, 12, MD.COAT_DK, '#1a211d'); // ba lô y tế
+    glow(ctx, MD.ACC_GLOW, 3, () => { fr(ctx, 22, 29 + bob, 2, 7, MD.ACC); fr(ctx, 20, 31 + bob, 6, 2, MD.ACC); });
+    gcircle(ctx, 24, hy, 14, MD.HOOD_HI, MD.HOOD);
+    fr(ctx, 19, hy + 5, 10, 2, MD.HOOD);
+    fc(ctx, 17, hy - 7, 3, MD.HOOD_HI);
+
+  } else if (dir === 2) { // LEFT
+    fc(ctx, 22, hy, 14, MD.OL);
+    fr(ctx, 13, 25 + bob, 21, 19, MD.OL);
+    grect(ctx, 16, 40 + lO, 6, 6, MD.PANTS, '#191e1b');
+    grect(ctx, 24, 40 + rO, 6, 6, MD.PANTS, '#191e1b');
+    fr(ctx, 14, 45 + lO, 8, 3, MD.BOOT); fr(ctx, 23, 45 + rO, 8, 3, MD.BOOT);
+    fr(ctx, 18, 26 + bob, 5, 13, MD.COAT_DK);
+    grect(ctx, 10, 25 + bob, 14, 17, MD.COAT_HI, MD.COAT);
+    grect(ctx, 8 + arm, 28 + bob, 5, 11, MD.COAT, MD.COAT_DK);
+    gcircle(ctx, 22, hy, 14, MD.HOOD_HI, MD.HOOD);
+    fc(ctx, 18, hy + 2, 9, MD.OL);
+    grect(ctx, 9, hy - 2, 12, 9, MD.MASK_HI, MD.MASK);
+    fc(ctx, 10, hy + 6, 3.5, MD.MASK); fc(ctx, 10, hy + 6, 2, MD.MASK_DK);
+    glow(ctx, MD.ACC_GLOW, 5, () => fc(ctx, 14, hy + 1, 3, MD.ACC));
+    fc(ctx, 14, hy + 1, 1.5, MD.ACC_DK);
+    fc(ctx, 20, hy - 7, 3, MD.HOOD_HI);
+
+  } else { // RIGHT
+    fc(ctx, 26, hy, 14, MD.OL);
+    fr(ctx, 14, 25 + bob, 21, 19, MD.OL);
+    grect(ctx, 18, 40 + lO, 6, 6, MD.PANTS, '#191e1b');
+    grect(ctx, 26, 40 + rO, 6, 6, MD.PANTS, '#191e1b');
+    fr(ctx, 17, 45 + lO, 8, 3, MD.BOOT); fr(ctx, 26, 45 + rO, 8, 3, MD.BOOT);
+    fr(ctx, 25, 26 + bob, 5, 13, MD.COAT_DK);
+    grect(ctx, 24, 25 + bob, 14, 17, MD.COAT_HI, MD.COAT);
+    grect(ctx, 35 - arm, 28 + bob, 5, 11, MD.COAT, MD.COAT_DK);
+    gcircle(ctx, 26, hy, 14, MD.HOOD_HI, MD.HOOD);
+    fc(ctx, 30, hy + 2, 9, MD.OL);
+    grect(ctx, 27, hy - 2, 12, 9, MD.MASK_HI, MD.MASK);
+    fc(ctx, 38, hy + 6, 3.5, MD.MASK); fc(ctx, 38, hy + 6, 2, MD.MASK_DK);
+    glow(ctx, MD.ACC_GLOW, 5, () => fc(ctx, 34, hy + 1, 3, MD.ACC));
+    fc(ctx, 34, hy + 1, 1.5, MD.ACC_DK);
+    fc(ctx, 28, hy - 7, 3, MD.HOOD_HI);
   }
-
-  // Shoulders (green trim)
-  fr(ctx,  7, 13,  3, 8, '#22AA44');
-  fr(ctx, 22, 13,  3, 8, '#22AA44');
-
-  // White coat body
-  fr(ctx, 10, 13, 12, 12, '#EEEEEE');
-  fr(ctx, 11, 14, 10,  3, '#FFFFFF'); // lapel
-  // Red cross chest
-  fr(ctx, 14, 17,  4,  8, '#EE2222');
-  fr(ctx, 11, 19, 10,  4, '#EE2222');
-  // Green trim belt
-  fr(ctx, 10, 25, 12,  2, '#22AA44');
-
-  // Legs
-  fr(ctx, 10, 27 + lO, 5, 3, '#2A7A44');
-  fr(ctx, 17, 27 + rO, 5, 3, '#2A7A44');
-  fr(ctx,  9, 30 + lO, 7, 2, '#114422'); // dark green boots
-  fr(ctx, 16, 30 + rO, 7, 2, '#114422');
 }
 
-// ─── TRAPPER — Orange vest, dark hood, brown bag ──────────────────────────────
+// ─── TRAPPER — 48px "Scavenger" survivor: mũ trùm + kính bảo hộ cam + đồ bẫy ──────
+const TP = {
+  OL: '#0F0A05',
+  JACK: '#43392c', JACK_HI: '#574b3a', JACK_DK: '#251e15',
+  HOOD: '#3a3326', HOOD_HI: '#4e4534',
+  PANTS: '#2c2820', BOOT: '#171410', SKIN: '#caa078',
+  GOG: '#1a1d22', GLASS: '#ff9e2e',
+  ACC: '#e8821e', ACC_DK: '#a85610', ACC_GLOW: '#ffb24a', STRAP: '#5a4632'
+};
 function drawTrapper(ctx, frame) {
-  const dir = (frame / 4) | 0;
-  const [lO, rO] = wo4(frame % 4);
+  const dir = (frame / 4) | 0, wf = frame % 4, w4 = wo4(wf);
+  const lO = w4[0] * 1.5, rO = w4[1] * 1.5;
+  const bob = (wf === 1 || wf === 3) ? 1.5 : 0, arm = [0, 3, 0, -3][wf], hy = 16 + bob;
 
-  // Dark hood
-  if (dir === 0) {
-    fc(ctx, 16, 8, 8, '#5A2808');
-    fc(ctx, 16, 6, 6, '#7A3D10');
-    fr(ctx,  9, 10, 14, 3, '#3C1A04'); // shadow under hood
-    fr(ctx, 12, 11,  8, 3, '#6A3010'); // face (partially hidden)
-  } else if (dir === 1) {
-    fc(ctx, 16, 7, 8, '#4A2006');
-    fc(ctx, 16, 5, 6, '#6A3210');
-    fr(ctx,  9, 11, 14, 3, '#3C1A04');
-  } else if (dir === 2) {
-    fc(ctx, 13, 8, 8, '#5A2808');
-    fc(ctx, 12, 6, 6, '#7A3D10');
-    fr(ctx,  7, 10, 13, 3, '#3C1A04');
-  } else {
-    fc(ctx, 19, 8, 8, '#5A2808');
-    fc(ctx, 20, 6, 6, '#7A3D10');
-    fr(ctx, 12, 10, 13, 3, '#3C1A04');
+  if (dir === 0) { // DOWN
+    fc(ctx, 24, hy, 15, TP.OL);
+    fr(ctx, 13, 25 + bob, 22, 19, TP.OL);
+    grect(ctx, 16, 40 + lO, 6, 6, TP.PANTS, '#15120d');
+    grect(ctx, 26, 40 + rO, 6, 6, TP.PANTS, '#15120d');
+    fr(ctx, 15, 45 + lO, 8, 3, TP.BOOT); fr(ctx, 25, 45 + rO, 8, 3, TP.BOOT);
+    grect(ctx, 11 + arm, 26 + bob, 5, 12, TP.JACK, TP.JACK_DK);
+    grect(ctx, 32 - arm, 26 + bob, 5, 12, TP.JACK, TP.JACK_DK);
+    grect(ctx, 14, 25 + bob, 20, 17, TP.JACK_HI, TP.JACK);
+    fr(ctx, 18, 26 + bob, 2, 15, TP.STRAP); fr(ctx, 27, 26 + bob, 2, 15, TP.STRAP); // đai
+    fr(ctx, 15, 33 + bob, 18, 2, TP.JACK_DK);                                       // thắt lưng
+    glow(ctx, TP.ACC_GLOW, 2, () => fr(ctx, 11 + arm, 28 + bob, 5, 2, TP.ACC));      // băng tay cam
+    fc(ctx, 31, 37 + bob, 3, TP.ACC); fc(ctx, 31, 37 + bob, 1.5, TP.JACK_DK);        // cuộn bẫy ở hông
+    gcircle(ctx, 24, hy, 14, TP.HOOD_HI, TP.HOOD);
+    fr(ctx, 15, hy, 18, 7, TP.SKIN);                                                // mặt
+    fr(ctx, 15, hy - 1, 18, 5, TP.GOG);                                             // kính bảo hộ
+    glow(ctx, TP.ACC_GLOW, 4, () => { fc(ctx, 20, hy + 1, 2.6, TP.GLASS); fc(ctx, 28, hy + 1, 2.6, TP.GLASS); });
+    fc(ctx, 20, hy + 1, 1.3, '#7a3d00'); fc(ctx, 28, hy + 1, 1.3, '#7a3d00');
+    fc(ctx, 19.3, hy + 0.2, 0.8, '#fff'); fc(ctx, 27.3, hy + 0.2, 0.8, '#fff');
+    fr(ctx, 18, hy + 5, 12, 2, TP.JACK_DK);                                         // khăn che miệng
+    fc(ctx, 17, hy - 7, 3, TP.HOOD_HI);
+
+  } else if (dir === 1) { // UP
+    fc(ctx, 24, hy, 15, TP.OL);
+    fr(ctx, 13, 25 + bob, 22, 19, TP.OL);
+    grect(ctx, 16, 40 + lO, 6, 6, TP.PANTS, '#15120d');
+    grect(ctx, 26, 40 + rO, 6, 6, TP.PANTS, '#15120d');
+    fr(ctx, 15, 45 + lO, 8, 3, TP.BOOT); fr(ctx, 25, 45 + rO, 8, 3, TP.BOOT);
+    grect(ctx, 11 + arm, 26 + bob, 5, 12, TP.JACK, TP.JACK_DK);
+    grect(ctx, 32 - arm, 26 + bob, 5, 12, TP.JACK, TP.JACK_DK);
+    grect(ctx, 14, 25 + bob, 20, 17, TP.JACK_HI, TP.JACK);
+    grect(ctx, 16, 27 + bob, 16, 12, TP.JACK_DK, '#1b160f');  // ba lô đồ nghề
+    fc(ctx, 24, 31 + bob, 3, TP.STRAP); fc(ctx, 24, 31 + bob, 1.6, TP.JACK_DK); // cuộn dây
+    glow(ctx, TP.ACC_GLOW, 2, () => fr(ctx, 21, 36 + bob, 6, 2, TP.ACC));
+    gcircle(ctx, 24, hy, 14, TP.HOOD_HI, TP.HOOD);
+    fr(ctx, 19, hy + 5, 10, 2, TP.HOOD);
+    fc(ctx, 17, hy - 7, 3, TP.HOOD_HI);
+
+  } else if (dir === 2) { // LEFT
+    fc(ctx, 22, hy, 14, TP.OL);
+    fr(ctx, 13, 25 + bob, 21, 19, TP.OL);
+    grect(ctx, 16, 40 + lO, 6, 6, TP.PANTS, '#15120d');
+    grect(ctx, 24, 40 + rO, 6, 6, TP.PANTS, '#15120d');
+    fr(ctx, 14, 45 + lO, 8, 3, TP.BOOT); fr(ctx, 23, 45 + rO, 8, 3, TP.BOOT);
+    fr(ctx, 18, 26 + bob, 5, 13, TP.JACK_DK);
+    grect(ctx, 10, 25 + bob, 14, 17, TP.JACK_HI, TP.JACK);
+    grect(ctx, 8 + arm, 28 + bob, 5, 11, TP.JACK, TP.JACK_DK);
+    gcircle(ctx, 22, hy, 14, TP.HOOD_HI, TP.HOOD);
+    fr(ctx, 8, hy, 12, 6, TP.SKIN);
+    fr(ctx, 8, hy - 1, 13, 5, TP.GOG);
+    glow(ctx, TP.ACC_GLOW, 4, () => fc(ctx, 13, hy + 1, 2.6, TP.GLASS));
+    fc(ctx, 13, hy + 1, 1.3, '#7a3d00');
+    fc(ctx, 20, hy - 7, 3, TP.HOOD_HI);
+
+  } else { // RIGHT
+    fc(ctx, 26, hy, 14, TP.OL);
+    fr(ctx, 14, 25 + bob, 21, 19, TP.OL);
+    grect(ctx, 18, 40 + lO, 6, 6, TP.PANTS, '#15120d');
+    grect(ctx, 26, 40 + rO, 6, 6, TP.PANTS, '#15120d');
+    fr(ctx, 17, 45 + lO, 8, 3, TP.BOOT); fr(ctx, 26, 45 + rO, 8, 3, TP.BOOT);
+    fr(ctx, 25, 26 + bob, 5, 13, TP.JACK_DK);
+    grect(ctx, 24, 25 + bob, 14, 17, TP.JACK_HI, TP.JACK);
+    grect(ctx, 35 - arm, 28 + bob, 5, 11, TP.JACK, TP.JACK_DK);
+    gcircle(ctx, 26, hy, 14, TP.HOOD_HI, TP.HOOD);
+    fr(ctx, 28, hy, 12, 6, TP.SKIN);
+    fr(ctx, 27, hy - 1, 13, 5, TP.GOG);
+    glow(ctx, TP.ACC_GLOW, 4, () => fc(ctx, 35, hy + 1, 2.6, TP.GLASS));
+    fc(ctx, 35, hy + 1, 1.3, '#7a3d00');
+    fc(ctx, 28, hy - 7, 3, TP.HOOD_HI);
   }
-
-  // Shoulders
-  fr(ctx,  7, 13,  3, 8, '#C4621A');
-  fr(ctx, 22, 13,  3, 8, '#C4621A');
-
-  // Orange vest body
-  fr(ctx, 10, 13, 12, 12, '#D4722A');
-  fr(ctx, 12, 14,  8,  3, '#E8924A'); // highlight
-  fr(ctx, 14, 18,  4,  5, '#B85A18'); // center pattern (X trap)
-  fr(ctx, 10, 25, 12,  2, '#8B4010'); // belt
-
-  // Brown bag on RIGHT side (dir 0 shows it; dir 2 hides it behind body)
-  if (dir !== 2) {
-    fr(ctx, 22, 16,  6,  7, '#8B5E2A'); // bag body
-    fr(ctx, 23, 17,  4,  5, '#A07040'); // bag highlight
-    fr(ctx, 23, 22,  4,  1, '#6A4418'); // bag strap
-  }
-
-  // Legs (small, sneaky)
-  fr(ctx, 11, 27 + lO, 4, 3, '#5A2A0A');
-  fr(ctx, 17, 27 + rO, 4, 3, '#5A2A0A');
-  fr(ctx, 10, 30 + lO, 6, 2, '#2C1404');
-  fr(ctx, 16, 30 + rO, 6, 2, '#2C1404');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // ZOMBIE DRAW FUNCTIONS  (frame = dir*2 + walkFrame)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── WALKER — Green-gray, ragged, blood detail ────────────────────────────────
+// ─── WALKER — 48px xác thối gầy guộc (thịt lộ, vết thương hở, mắt sáng) ───────────
+const WK = {
+  OL: '#0A0E08',
+  SKIN: '#5a6a44', SKIN_HI: '#71834f', SKIN_DK: '#34401f',
+  CLOTH: '#3a3a32', CLOTH_DK: '#21211b',
+  WOUND: '#6a1410', BONE: '#cabf9e', EYE: '#aaff44', EYE_GLOW: '#88dd22', BLOOD: '#560c08'
+};
 function drawWalker(ctx, frame) {
-  const dir = (frame / 2) | 0;
-  const [lO, rO] = wo2(frame % 2);
+  const dir = (frame / 2) | 0, wf = frame % 2, w2 = wo2(wf);
+  const lO = w2[0] * 1.5, rO = w2[1] * 1.5;
+  const hx = dir === 2 ? 20 : dir === 3 ? 28 : 24;
 
-  // Head
-  const hx = dir === 2 ? 12 : dir === 3 ? 18 : 16;
-  fc(ctx, hx, 8, 8, '#3A6A2A');
-  fc(ctx, hx - 2, 6, 5, '#4A8A3A');
-  // Blood splat
-  fc(ctx, hx + 3, 5, 3, '#881A1A');
-  // Sunken eyes
-  fr(ctx, hx - 6,  7, 4, 3, '#1A3A10');
-  fr(ctx, hx + 2,  7, 4, 3, '#1A3A10');
-  fr(ctx, hx - 5,  8, 2, 2, '#CCCCAA'); // eye whites
-  fr(ctx, hx + 3,  8, 2, 2, '#CCCCAA');
-
-  // Ragged body
-  fr(ctx,  8, 13, 16, 12, '#3A6A2A');
-  fr(ctx,  8, 13,  4, 12, '#2A5A1A'); // left dark strip (ragged)
-  fr(ctx, 20, 13,  4, 12, '#2A5A1A'); // right dark strip
-  fr(ctx, 10, 15,  3,  4, '#4A8A3A'); // rip highlight L
-  fr(ctx, 19, 17,  3,  3, '#4A8A3A'); // rip highlight R
-  fr(ctx,  8, 25, 16,  2, '#2A4A18'); // hips
-
-  // Legs (shambling - uneven)
-  fr(ctx,  9, 27 + lO, 6, 4, '#2A5A1A');
-  fr(ctx, 17, 27 + rO, 5, 4, '#2A5A1A');
-  fr(ctx,  8, 30 + lO, 8, 2, '#1A3A10');
-  fr(ctx, 16, 30 + rO, 7, 2, '#1A3A10');
+  fc(ctx, 24, 16, 13, WK.OL);
+  fr(ctx, 13, 24, 22, 20, WK.OL);
+  grect(ctx, 16, 40 + lO, 6, 7, WK.SKIN, WK.SKIN_DK);        // chân lê
+  grect(ctx, 26, 40 + rO, 6, 7, WK.SKIN, WK.SKIN_DK);
+  fr(ctx, 15, 46 + lO, 8, 2, WK.OL); fr(ctx, 25, 46 + rO, 8, 2, WK.OL);
+  grect(ctx, 10, 27, 5, 14, WK.SKIN, WK.SKIN_DK);            // tay buông
+  grect(ctx, 33, 27, 5, 14, WK.SKIN, WK.SKIN_DK);
+  fc(ctx, 12, 41, 3, WK.SKIN_HI); fc(ctx, 36, 41, 3, WK.SKIN_HI);
+  grect(ctx, 14, 25, 20, 17, WK.SKIN_HI, WK.SKIN);           // thân
+  fr(ctx, 14, 25, 7, 17, WK.CLOTH);                          // áo rách
+  fr(ctx, 27, 28, 6, 12, WK.CLOTH);
+  fr(ctx, 20, 30, 5, 5, WK.WOUND);                           // vết thương hở
+  fc(ctx, 22, 33, 1.5, WK.BLOOD);
+  fr(ctx, 18, 35, 3, 4, WK.SKIN_DK);                         // bóng sườn
+  fc(ctx, hx, 16, 8, WK.SKIN_DK);                            // đầu
+  fc(ctx, hx, 15, 7, WK.SKIN);
+  fc(ctx, hx - 3, 13, 2.5, WK.SKIN_HI);
+  fc(ctx, hx + 3, 12, 2, WK.BLOOD);
+  fr(ctx, hx - 5, 15, 4, 3, WK.OL); fr(ctx, hx + 1, 15, 4, 3, WK.OL); // hốc mắt
+  glow(ctx, WK.EYE_GLOW, 3, () => { fc(ctx, hx - 3, 16, 1.4, WK.EYE); fc(ctx, hx + 3, 16, 1.4, WK.EYE); });
+  fr(ctx, hx - 3, 20, 6, 3, WK.OL);                          // hàm há
+  fr(ctx, hx - 2, 20, 1, 2, WK.BONE); fr(ctx, hx, 20, 1, 2, WK.BONE); fr(ctx, hx + 2, 20, 1, 2, WK.BONE);
 }
 
-// ─── RUNNER — Yellow-brown, lean, orange eyes ─────────────────────────────────
+// ─── RUNNER — 48px xác gầy phi nhanh (vuốt, mắt cam rực, vệt tốc độ) ──────────────
+const RN = {
+  OL: '#0D0A04',
+  SKIN: '#9a7a30', SKIN_HI: '#b89a45', SKIN_DK: '#5a4310',
+  CLAW: '#cabf9e', EYE: '#ff6a00', EYE_GLOW: '#ff8a1e', BLOOD: '#560c08'
+};
 function drawRunner(ctx, frame) {
-  const dir = (frame / 2) | 0;
-  const [lO, rO] = wo2(frame % 2);
-  const hx = dir === 2 ? 13 : dir === 3 ? 19 : 16;
+  const dir = (frame / 2) | 0, wf = frame % 2, w2 = wo2(wf);
+  const lO = w2[0] * 1.5, rO = w2[1] * 1.5;
+  const hx = dir === 2 ? 20 : dir === 3 ? 28 : 24;
 
-  // Small head
-  fc(ctx, hx, 8, 6, '#8A6A10');
-  fc(ctx, hx - 1, 6, 4, '#B08020');
-  // Orange glowing eyes
-  fc(ctx, hx - 4, 8, 2.5, '#FF4400');
-  fc(ctx, hx + 2, 8, 2.5, '#FF4400');
-  fc(ctx, hx - 4, 8, 1.2, '#FFAA00');
-  fc(ctx, hx + 2, 8, 1.2, '#FFAA00');
+  if (dir === 2) { for (let i = 0; i < 4; i++) fr(ctx, 2, 20 + i * 4, 9 - i, 1, RN.EYE_GLOW); }
+  else if (dir === 3) { for (let i = 0; i < 4; i++) fr(ctx, 37 + i, 20 + i * 4, 9 - i, 1, RN.EYE_GLOW); }
 
-  // Lean body (narrow)
-  fr(ctx, 11, 13, 10, 12, '#C8A020');
-  fr(ctx, 12, 14,  8,  3, '#E8C040'); // highlight
-  fr(ctx, 13, 18,  6,  5, '#A07010'); // dark torso center
-  fr(ctx, 11, 25, 10,  2, '#806010'); // belt
-
-  // Speed blur lines (when dir is left/right)
-  if (dir === 2) {
-    fr(ctx,  2, 16, 8, 1, '#FF6600');
-    fr(ctx,  3, 18, 6, 1, '#FF6600');
-    fr(ctx,  2, 20, 7, 1, '#FF6600');
-  } else if (dir === 3) {
-    fr(ctx, 22, 16, 8, 1, '#FF6600');
-    fr(ctx, 23, 18, 6, 1, '#FF6600');
-    fr(ctx, 23, 20, 7, 1, '#FF6600');
-  }
-
-  // Long legs
-  fr(ctx, 11, 27 + lO, 4, 4, '#8A6A10');
-  fr(ctx, 17, 27 + rO, 4, 4, '#8A6A10');
-  fr(ctx, 10, 30 + lO, 6, 2, '#4A3808');
-  fr(ctx, 16, 30 + rO, 6, 2, '#4A3808');
+  fc(ctx, 24, 16, 11, RN.OL);
+  fr(ctx, 16, 24, 16, 18, RN.OL);                            // thân gầy
+  grect(ctx, 17, 40 + lO, 5, 8, RN.SKIN, RN.SKIN_DK);        // chân dài
+  grect(ctx, 26, 40 + rO, 5, 8, RN.SKIN, RN.SKIN_DK);
+  fr(ctx, 16, 47 + lO, 7, 1, RN.OL); fr(ctx, 25, 47 + rO, 7, 1, RN.OL);
+  grect(ctx, 11, 28, 5, 13, RN.SKIN, RN.SKIN_DK);            // tay dài + vuốt
+  grect(ctx, 32, 28, 5, 13, RN.SKIN, RN.SKIN_DK);
+  [-2, 1].forEach(o => { fr(ctx, 11 + o, 41, 1.3, 4, RN.CLAW); fr(ctx, 33 + o, 41, 1.3, 4, RN.CLAW); });
+  grect(ctx, 17, 25, 14, 16, RN.SKIN_HI, RN.SKIN);           // ngực hốc hác
+  fr(ctx, 21, 28, 6, 9, RN.SKIN_DK);                         // hốc bụng
+  fr(ctx, 19, 30, 2, 6, RN.SKIN_DK); fr(ctx, 27, 30, 2, 6, RN.SKIN_DK); // sườn
+  fc(ctx, hx, 16, 7, RN.SKIN_DK);                            // đầu nhỏ
+  fc(ctx, hx, 15, 5.5, RN.SKIN);
+  fr(ctx, hx - 4, 19, 8, 3, RN.OL);                          // mõm há
+  fr(ctx, hx - 3, 19, 1, 2, RN.CLAW); fr(ctx, hx, 19, 1, 2, RN.CLAW); fr(ctx, hx + 2, 19, 1, 2, RN.CLAW);
+  glow(ctx, RN.EYE_GLOW, 4, () => { fc(ctx, hx - 3, 14, 1.8, RN.EYE); fc(ctx, hx + 3, 14, 1.8, RN.EYE); });
 }
 
-// ─── BRUTE — Dark purple, very wide, protruding fists ────────────────────────
+// ─── BRUTE — 48px zombie khổng lồ hung tợn (thịt lộ, móng xương, mắt đỏ) ──────────
+const BR = {
+  OL: '#0A0705',
+  FLESH: '#5a3a30', FLESH_HI: '#754a3c', FLESH_DK: '#321d16',
+  MUSCLE: '#7a2e26', MUSCLE_DK: '#4a1611',
+  BONE: '#ccbf9e', EYE: '#ff3a1e', EYE_GLOW: '#ff5a2e', BLOOD: '#560c08'
+};
 function drawBrute(ctx, frame) {
-  const dir = (frame / 2) | 0;
-  const [lO, rO] = wo2(frame % 2);
+  const dir = (frame / 2) | 0, wf = frame % 2, w2 = wo2(wf);
+  const lO = w2[0] * 1.5, rO = w2[1] * 1.5;
 
-  // Large head
-  fc(ctx, 16, 8, 10, '#4A1A88');
-  fc(ctx, 16, 6,  8, '#6622AA');
-  fc(ctx, 14, 5,  3, '#8844CC'); // shine
-  // Glowing eyes
-  fc(ctx,  11, 8, 3, '#CC00FF');
-  fc(ctx,  21, 8, 3, '#CC00FF');
-  fc(ctx,  11, 8, 1.5, '#FFFFFF');
-  fc(ctx,  21, 8, 1.5, '#FFFFFF');
-  // Thick brow
-  fr(ctx,   7, 6, 7, 3, '#3A0A70');
-  fr(ctx,  18, 6, 7, 3, '#3A0A70');
-
-  // Fists protruding on sides
-  fc(ctx,  3, 18, 5, '#AA55DD'); // fist L
-  fc(ctx, 29, 18, 5, '#AA55DD'); // fist R
-  fc(ctx,  3, 18, 3, '#8833BB');
-  fc(ctx, 29, 18, 3, '#8833BB');
-
-  // Very wide body
-  fr(ctx,  6, 13, 20, 13, '#6622AA');
-  fr(ctx,  8, 14, 16,  4, '#8844CC'); // chest highlight
-  fr(ctx, 11, 19,  4,  4, '#4A1A88'); // left muscle ridge
-  fr(ctx, 17, 19,  4,  4, '#4A1A88'); // right muscle ridge
-  fr(ctx,  6, 26, 20,  2, '#3A1166'); // belt
-
-  // Stubby legs
-  fr(ctx,  8, 28 + lO, 7, 3, '#3A1166');
-  fr(ctx, 17, 28 + rO, 7, 3, '#3A1166');
-  fr(ctx,  7, 30 + lO, 8, 2, '#200A44');
-  fr(ctx, 17, 30 + rO, 8, 2, '#200A44');
-}
-
-// ─── SPITTER — Toxic green, round, acid mouth ─────────────────────────────────
-function drawSpitter(ctx, frame) {
-  const dir = (frame / 2) | 0;
-  const [lO, rO] = wo2(frame % 2);
-  const hx = dir === 2 ? 13 : dir === 3 ? 19 : 16;
-
-  // Round head
-  fc(ctx, hx, 8, 9, '#157A18');
-  fc(ctx, hx, 7, 7, '#22BB22');
-  fc(ctx, hx - 3, 5, 3, '#44DD44'); // shine
-  // Toxic eyes
-  fc(ctx, hx - 4, 8, 3, '#AAFF22');
-  fc(ctx, hx + 3, 8, 3, '#AAFF22');
-  fc(ctx, hx - 4, 8, 1.5, '#005500');
-  fc(ctx, hx + 3, 8, 1.5, '#005500');
-  // Acid mouth (wide)
-  fr(ctx, hx - 5, 12, 10, 4, '#003300');
-  fc(ctx, hx,     14, 3.5, '#88FF00');
-  // Acid drip
-  fc(ctx, hx - 3, 17, 2, '#AAFF22');
-  fc(ctx, hx + 2, 18, 1.5, '#AAFF22');
-
-  // Round body (slightly wider than tall)
-  fc(ctx, 16, 20, 9, '#1A8A1A');
-  fc(ctx, 16, 20, 7, '#22BB22');
-  fr(ctx, 10, 14, 12, 13, '#22BB22'); // rectangular part
-  fc(ctx,  9, 20, 3, '#22BB22'); // side bulge L
-  fc(ctx, 23, 20, 3, '#22BB22'); // side bulge R
-  // Acid sacs on sides
-  fc(ctx,  8, 19, 4, '#157A18');
-  fc(ctx, 24, 19, 4, '#157A18');
-
-  fr(ctx, 11, 27, 10, 2, '#157A18');
-
-  // Short legs
-  fr(ctx, 11, 29 + lO, 4, 3, '#0D5010');
-  fr(ctx, 17, 29 + rO, 4, 3, '#0D5010');
-  fr(ctx, 10, 31 + lO, 6, 1, '#062808');
-  fr(ctx, 16, 31 + rO, 6, 1, '#062808');
-}
-
-// ─── SCREAMER — Magenta 8-point star (top-down) ───────────────────────────────
-function drawScreamer(ctx, frame) {
-  const wf = frame % 2;
-  // Star rotates slightly between frames
-  const rot = wf === 0 ? 0 : Math.PI / 16;
-  const cx = 16, cy = 16, ro = 14, ri = 7;
-
-  // Outer star
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(rot);
-  fstar(ctx, 0, 0, ro, ri, 8, '#882288');
-  fstar(ctx, 0, 0, ro - 3, ri + 1, 8, '#CC44CC');
-  fstar(ctx, 0, 0, ro - 6, ri + 3, 8, '#FF88FF');
-  ctx.restore();
-
-  // Core
-  fc(ctx, cx, cy, 6, '#CC44CC');
-  fc(ctx, cx, cy, 4, '#FF88FF');
-  // Screaming mouth (O)
-  fc(ctx, cx, cy + 2, 3, '#110011');
-  // Eyes
-  fr(ctx, cx - 5, cy - 4, 3, 2, '#110011');
-  fr(ctx, cx + 2, cy - 4, 3, 2, '#110011');
-}
-
-// ─── EXPLODER — Purple round, glow, timer bar ─────────────────────────────────
-function drawExploder(ctx, frame) {
-  const wf = frame % 2;
-  const pulse = wf === 0 ? 0 : 1; // glow pulse per frame
-
-  // Glow ring
-  fc(ctx, 16, 17, 15 + pulse, '#330033');
-  fc(ctx, 16, 17, 13 + pulse, '#660066');
-  // Body
-  fc(ctx, 16, 17, 12, '#7722BB');
-  fc(ctx, 16, 17, 10, '#9933CC');
-  fc(ctx, 16, 17,  8, '#AA44DD');
-  fc(ctx, 14, 15,  4, '#CC77EE'); // shine
-
-  // Danger lines radiating
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const x1 = 16 + Math.cos(a) * 8;
-    const y1 = 17 + Math.sin(a) * 8;
-    const x2 = 16 + Math.cos(a) * (14 + pulse);
-    const y2 = 17 + Math.sin(a) * (14 + pulse);
-    ctx.strokeStyle = '#FF6600';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
+  if (dir === 1) { // UP — lưng gù, gai xương sống
+    fr(ctx, 8, 18, 32, 24, BR.OL);
+    grect(ctx, 15, 40 + lO, 8, 7, BR.FLESH, BR.FLESH_DK);
+    grect(ctx, 25, 40 + rO, 8, 7, BR.FLESH, BR.FLESH_DK);
+    grect(ctx, 3, 22, 9, 18, BR.FLESH, BR.FLESH_DK);
+    grect(ctx, 36, 22, 9, 18, BR.FLESH, BR.FLESH_DK);
+    grect(ctx, 10, 18, 28, 22, BR.FLESH_HI, BR.FLESH);
+    fr(ctx, 22, 18, 4, 22, BR.MUSCLE_DK);
+    [20, 26, 32, 38].forEach(y => fc(ctx, 24, y, 2.5, BR.BONE));
+    fc(ctx, 24, 15, 7, BR.FLESH_DK);
+    return;
   }
 
-  // Eyes (skull style)
-  fc(ctx, 12, 15, 3.5, '#330055');
-  fc(ctx, 20, 15, 3.5, '#330055');
-  fc(ctx, 12, 15, 2,   '#110022');
-  fc(ctx, 20, 15, 2,   '#110022');
-  // Grimace
-  fr(ctx, 11, 21, 10, 2, '#110022');
-  fr(ctx, 12, 20,  2, 2, '#110022');
-  fr(ctx, 18, 20,  2, 2, '#110022');
+  const hx = dir === 2 ? 20 : dir === 3 ? 28 : 24;
 
-  // Timer bar at top (red, animated)
-  fr(ctx,  4, 1, 24, 3, '#440000'); // bar background
-  const barW = wf === 0 ? 20 : 14;  // "filling up" effect
-  fr(ctx,  4, 1, barW, 3, '#FF2200'); // bar fill
-  fr(ctx,  4, 1,  4, 1, '#FF8800'); // highlight left
+  fr(ctx, 8, 18, 32, 24, BR.OL);                              // khối thân
+  grect(ctx, 15, 40 + lO, 8, 7, BR.FLESH, BR.FLESH_DK);       // chân
+  grect(ctx, 25, 40 + rO, 8, 7, BR.FLESH, BR.FLESH_DK);
+  fr(ctx, 14, 45 + lO, 10, 3, BR.OL); fr(ctx, 24, 45 + rO, 10, 3, BR.OL);
+  grect(ctx, 3, 22, 9, 18, BR.FLESH, BR.FLESH_DK);            // tay khổng lồ
+  grect(ctx, 36, 22, 9, 18, BR.FLESH, BR.FLESH_DK);
+  fc(ctx, 8, 40, 6, BR.FLESH_HI); fc(ctx, 40, 40, 6, BR.FLESH_HI); // nắm đấm
+  [-4, -1, 2].forEach(o => {                                  // móng xương
+    fr(ctx, 7 + o, 42, 1.5, 5, BR.BONE);
+    fr(ctx, 39 + o, 42, 1.5, 5, BR.BONE);
+  });
+  grect(ctx, 10, 20, 28, 20, BR.FLESH_HI, BR.FLESH);          // ngực bự
+  fr(ctx, 16, 24, 16, 3, BR.MUSCLE);                          // cơ lộ
+  fr(ctx, 15, 28, 3, 8, BR.MUSCLE_DK);                        // khe sườn
+  fr(ctx, 22, 28, 3, 8, BR.MUSCLE_DK);
+  fr(ctx, 29, 28, 3, 8, BR.MUSCLE_DK);
+  fc(ctx, 20, 34, 3, BR.BLOOD); fc(ctx, 29, 31, 2, BR.BLOOD); // máu
+  fc(ctx, hx, 16, 7, BR.FLESH_DK);                            // đầu thụt
+  fr(ctx, hx - 5, 16, 10, 4, BR.OL);                          // miệng há
+  fr(ctx, hx - 4, 16, 1, 3, BR.BONE);                         // răng
+  fr(ctx, hx - 1, 16, 1, 3, BR.BONE);
+  fr(ctx, hx + 2, 16, 1, 3, BR.BONE);
+  glow(ctx, BR.EYE_GLOW, 5, () => {                           // mắt đỏ rực
+    fc(ctx, hx - 3, 12, 2.2, BR.EYE);
+    fc(ctx, hx + 3, 12, 2.2, BR.EYE);
+  });
 }
 
-// ─── HORDEKING — Black body, gold crown, red eyes ─────────────────────────────
+// ─── SPITTER — 48px xác phồng độc (túi axit, miệng phun xanh phát sáng) ───────────
+const SP = {
+  OL: '#04130A',
+  SKIN: '#1f7a26', SKIN_HI: '#33a83a', SKIN_DK: '#0e4514',
+  SAC: '#2faa30', SAC_HI: '#5cd84e',
+  ACID: '#aaff22', ACID_GLOW: '#88ff00', EYE: '#ccff44', PUS: '#d8f06a'
+};
+function drawSpitter(ctx, frame) {
+  const dir = (frame / 2) | 0, wf = frame % 2, w2 = wo2(wf);
+  const lO = w2[0] * 1.5, rO = w2[1] * 1.5;
+  const hx = dir === 2 ? 20 : dir === 3 ? 28 : 24;
+
+  fc(ctx, 24, 26, 19, SP.OL);                                // khối phồng
+  grect(ctx, 17, 41 + lO, 5, 6, SP.SKIN, SP.SKIN_DK);        // chân ngắn
+  grect(ctx, 26, 41 + rO, 5, 6, SP.SKIN, SP.SKIN_DK);
+  gcircle(ctx, 24, 28, 16, SP.SKIN_HI, SP.SKIN);             // bụng tròn bự
+  // túi axit hai bên phát sáng
+  glow(ctx, SP.ACID_GLOW, 5, () => { fc(ctx, 9, 28, 6, SP.SAC); fc(ctx, 39, 28, 6, SP.SAC); });
+  fc(ctx, 9, 26, 2.5, SP.SAC_HI); fc(ctx, 39, 26, 2.5, SP.SAC_HI);
+  // mụn mủ trên bụng
+  fc(ctx, 18, 26, 2, SP.PUS); fc(ctx, 29, 31, 2.5, SP.PUS); fc(ctx, 22, 34, 1.8, SP.PUS);
+  fc(ctx, 24, 16, 10, SP.SKIN_DK);                           // đầu
+  fc(ctx, 24, 15, 8, SP.SKIN);
+  fr(ctx, hx - 6, 17, 12, 5, SP.OL);                         // miệng rộng
+  glow(ctx, SP.ACID_GLOW, 5, () => fc(ctx, hx, 19, 3.5, SP.ACID_GLOW));
+  fc(ctx, hx - 4, 24, 2, SP.ACID); fc(ctx, hx + 3, 26, 1.6, SP.ACID); // nhỏ axit
+  glow(ctx, SP.ACID_GLOW, 4, () => { fc(ctx, hx - 4, 13, 2.4, SP.EYE); fc(ctx, hx + 4, 13, 2.4, SP.EYE); });
+  fc(ctx, hx - 4, 13, 1.2, '#0a3a0a'); fc(ctx, hx + 4, 13, 1.2, '#0a3a0a');
+}
+
+// ─── SCREAMER — 48px bóng ma gào thét (mặt hốc hác, miệng há, sóng âm) ────────────
+const SC = {
+  OL: '#1a1208',
+  SKIN: '#c9c4a0', SKIN_HI: '#e2ddba', SKIN_DK: '#8a8460',
+  MAW: '#2a0e0e', EYE: '#fff04a', EYE_GLOW: '#ffe000'
+};
+function drawScreamer(ctx, frame) {
+  const wf = frame % 2, pulse = wf === 0 ? 0 : 2;
+  const cx = 24, cy = 24;
+  ctx.lineWidth = 1.5;
+  [13, 18, 23].forEach((r, i) => {                           // sóng âm lan
+    ctx.strokeStyle = `rgba(255,240,120,${0.5 - i * 0.15})`;
+    ctx.beginPath(); ctx.arc(cx, cy, r + pulse, 0, Math.PI * 2); ctx.stroke();
+  });
+  fc(ctx, cx, cy, 12, SC.OL);
+  fc(ctx, cx, cy - 1, 11, SC.SKIN);
+  fc(ctx, cx - 3, cy - 4, 3, SC.SKIN_HI);
+  fr(ctx, cx - 11, cy - 1, 3, 6, SC.SKIN_DK);                // má hóp
+  fr(ctx, cx + 8, cy - 1, 3, 6, SC.SKIN_DK);
+  ctx.fillStyle = SC.MAW;                                    // miệng gào khổng lồ
+  ctx.beginPath(); ctx.ellipse(cx, cy + 5, 5, 7 + pulse, 0, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 4; i++) {                              // răng lởm chởm
+    fr(ctx, cx - 4 + i * 2.5, cy + 1, 1, 2, SC.SKIN_HI);
+    fr(ctx, cx - 4 + i * 2.5, cy + 9, 1, 2, SC.SKIN_HI);
+  }
+  glow(ctx, SC.EYE_GLOW, 5, () => { fc(ctx, cx - 5, cy - 4, 2.6, SC.EYE); fc(ctx, cx + 5, cy - 4, 2.6, SC.EYE); });
+  fc(ctx, cx - 5, cy - 4, 1.2, SC.OL); fc(ctx, cx + 5, cy - 4, 1.2, SC.OL);
+}
+
+// ─── EXPLODER — 48px xác phồng sắp nổ (mụn rộp, nứt phát sáng đập theo nhịp) ──────
+const EX = {
+  OL: '#1a0a22',
+  SKIN: '#6a3a7a', SKIN_HI: '#8a4f9a', SKIN_DK: '#3a1f48',
+  CRACK: '#ff7a2e', CRACK_GLOW: '#ffb24a', BLISTER: '#b46ad0', PUS: '#d89af0', EYE: '#ff5a2e'
+};
+function drawExploder(ctx, frame) {
+  const wf = frame % 2, p = wf === 0 ? 0 : 2;
+  const cx = 24, cy = 26;
+  fc(ctx, cx, cy, 19, EX.OL);
+  gcircle(ctx, cx, cy, 18, EX.SKIN_HI, EX.SKIN);             // thân phồng to
+  fc(ctx, 14, 22, 4, EX.BLISTER); fc(ctx, 34, 24, 5, EX.BLISTER); fc(ctx, 26, 36, 4, EX.BLISTER);
+  fc(ctx, 14, 21, 1.6, EX.PUS); fc(ctx, 34, 23, 2, EX.PUS);  // mụn rộp
+  glow(ctx, EX.CRACK_GLOW, 4 + p, () => {                    // nứt phát sáng đập nhịp
+    ctx.strokeStyle = EX.CRACK; ctx.lineWidth = 1.5 + (p ? 0.8 : 0);
+    ctx.beginPath(); ctx.moveTo(16, 18); ctx.lineTo(22, 26); ctx.lineTo(18, 34); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(32, 16); ctx.lineTo(28, 26); ctx.lineTo(33, 34); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(22, 26); ctx.lineTo(30, 28); ctx.stroke();
+  });
+  fc(ctx, cx, 13, 7, EX.SKIN_DK);                            // đầu thụt nhỏ
+  fr(ctx, cx - 4, 14, 8, 2, EX.OL);                          // nhăn nhó
+  glow(ctx, EX.EYE, 4, () => { fc(ctx, cx - 3, 12, 1.8, EX.EYE); fc(ctx, cx + 3, 12, 1.8, EX.EYE); });
+}
+
+// ─── HORDEKING — 48px BOSS: vua zombie hắc ám, vương miện vàng, mắt đỏ rực ────────
+const HK = {
+  OL: '#050507',
+  BODY: '#14131a', BODY_HI: '#262430', BODY_DK: '#0a0a0e',
+  GOLD: '#d8a81e', GOLD_HI: '#ffd24a', GOLD_DK: '#8a6810',
+  EYE: '#ff2a1e', EYE_GLOW: '#ff5a2e', CLOAK: '#1a0e1e', BONE: '#cabf9e'
+};
 function drawHordeking(ctx, frame) {
-  const dir = (frame / 2) | 0;
-  const [lO, rO] = wo2(frame % 2);
+  const dir = (frame / 2) | 0, wf = frame % 2, w2 = wo2(wf);
+  const lO = w2[0] * 1.5, rO = w2[1] * 1.5;
+  const hx = dir === 2 ? 20 : dir === 3 ? 28 : 24;
 
-  // Gold crown (3 spikes)
-  fr(ctx,  6, 5, 20, 6, '#C8A000'); // crown base
-  fr(ctx,  8, 6, 16, 4, '#FFD700'); // crown highlight
-  // 3 crown spikes
-  fr(ctx,  7, 1, 5, 5, '#C8A000');
-  fr(ctx, 14, 0, 5, 6, '#FFD700'); // center spike (taller, brighter)
-  fr(ctx, 21, 1, 5, 5, '#C8A000');
-  fr(ctx,  8, 2, 3, 3, '#FFEE44'); // left spike shine
-  fr(ctx, 15, 1, 3, 4, '#FFEE44'); // center spike shine
-  fr(ctx, 22, 2, 3, 3, '#FFEE44'); // right spike shine
-
-  // Massive dark head
-  fr(ctx,  5, 5, 22, 11, '#0A0A0A');
-  fr(ctx,  7, 6, 18,  5, '#1A1A1A'); // face
-  // Glowing red eyes
-  fc(ctx, 12, 10, 4, '#FF0000');
-  fc(ctx, 20, 10, 4, '#FF0000');
-  fc(ctx, 12, 10, 2, '#FF8800');
-  fc(ctx, 20, 10, 2, '#FF8800');
-  fc(ctx, 12, 10, 1, '#FFFFFF');
-  fc(ctx, 20, 10, 1, '#FFFFFF');
-  // Menacing snarl
-  fr(ctx,  9, 13, 14, 2, '#3A0000');
-  fr(ctx, 11, 12,  3, 2, '#550000'); // teeth gaps
-
-  // Dark aura on sides
-  fr(ctx,  0, 13, 6, 16, '#0D0010');
-  fr(ctx, 26, 13, 6, 16, '#0D0010');
-
-  // Very wide body (robe/cloak)
-  fr(ctx,  4, 15, 24, 14, '#111111');
-  fr(ctx,  6, 16, 20, 10, '#1A1A1A'); // lighter center
-  fr(ctx,  9, 17, 14,  6, '#222222'); // robe center
-  fr(ctx, 12, 18,  8,  4, '#2A2A2A'); // robe highlight
-  // Belt/clasp
-  fr(ctx,  4, 29, 24,  2, '#C8A000'); // gold belt
-
-  // Heavy legs
-  fr(ctx,  7, 27 + lO, 8, 4, '#080808');
-  fr(ctx, 17, 27 + rO, 8, 4, '#080808');
-  fr(ctx,  6, 30 + lO, 9, 2, '#040404');
-  fr(ctx, 17, 30 + rO, 9, 2, '#040404');
+  fc(ctx, 24, 22, 19, HK.OL);
+  fr(ctx, 7, 22, 34, 24, HK.OL);
+  grect(ctx, 15, 42 + lO, 8, 6, HK.BODY, HK.BODY_DK);        // chân nặng
+  grect(ctx, 25, 42 + rO, 8, 6, HK.BODY, HK.BODY_DK);
+  grect(ctx, 8, 24, 32, 22, HK.BODY_HI, HK.CLOAK);           // áo choàng rộng
+  [10, 17, 24, 31, 37].forEach(x => fr(ctx, x, 44, 4, 3, HK.CLOAK)); // viền rách
+  grect(ctx, 5, 24, 8, 16, HK.BODY, HK.BODY_DK);             // vai/tay bự
+  grect(ctx, 35, 24, 8, 16, HK.BODY, HK.BODY_DK);
+  glow(ctx, HK.GOLD_HI, 3, () => fc(ctx, 24, 30, 3.5, HK.GOLD)); // móc cài vàng
+  fc(ctx, 24, 30, 1.8, HK.GOLD_DK);
+  fr(ctx, 18, 26, 2, 8, HK.BONE); fr(ctx, 28, 26, 2, 8, HK.BONE); // xương sườn
+  fc(ctx, hx, 16, 10, HK.BODY_DK);                           // đầu khổng lồ
+  fc(ctx, hx, 16, 8.5, HK.BODY);
+  fr(ctx, hx - 9, 6, 18, 4, HK.GOLD); fr(ctx, hx - 9, 6, 18, 1, HK.GOLD_HI); // vương miện
+  [-8, -3, 2, 7].forEach((o, i) => {
+    const tall = (i === 1 || i === 2) ? 6 : 4;
+    fr(ctx, hx + o, 6 - tall, 3, tall, i % 2 ? HK.GOLD : HK.GOLD_HI);
+  });
+  glow(ctx, HK.GOLD_HI, 3, () => fc(ctx, hx, 2, 1.6, HK.GOLD_HI));
+  fr(ctx, hx - 5, 20, 10, 3, HK.OL);                         // gầm gừ
+  for (let i = 0; i < 4; i++) fr(ctx, hx - 4 + i * 2.5, 20, 1, 2, HK.BONE);
+  glow(ctx, HK.EYE_GLOW, 6, () => { fc(ctx, hx - 4, 15, 2.8, HK.EYE); fc(ctx, hx + 4, 15, 2.8, HK.EYE); });
+  fc(ctx, hx - 4, 15, 1.3, '#ffffff'); fc(ctx, hx + 4, 15, 1.3, '#ffffff');
 }
 
 // ─── GRASS — 4 variations ───────────────────────────────────────────────────────
@@ -604,26 +787,55 @@ function drawTree(ctx, frame) {
   fr(ctx, 4, 22, 2, 3, '#1a4a0a'); fr(ctx, 42, 20, 2, 3, '#1a4a0a');
 }
 
-// ─── ROCK — 32x32 ─────────────────────────────────────────────────────────────
-function drawRock(ctx, frame) {
-  // Thân đá
-  fr(ctx, 4, 10, 24, 16, '#6a6a6a');
-  // Bo góc
-  fr(ctx, 6, 8, 20, 18, '#7a7a7a');
-  fr(ctx, 8, 7, 16, 19, '#7a7a7a');
+// ─── RUBBLE — đống gạch vụn bê-tông 32×32 (thay đá) ─────────────────────────────
+function drawRock(ctx) {
+  fc(ctx, 16, 23, 12, 'rgba(0,0,0,0.35)');     // bóng nền
+  // các khối bê-tông vỡ
+  fr(ctx, 6, 16, 9, 8, '#454a52'); fr(ctx, 6, 16, 9, 2, '#575c64');
+  fr(ctx, 15, 18, 8, 8, '#3c414a'); fr(ctx, 15, 18, 8, 2, '#4e535b');
+  fr(ctx, 11, 12, 7, 7, '#434851'); fr(ctx, 11, 12, 7, 2, '#555a62');
+  fr(ctx, 20, 13, 6, 6, '#383d45'); fr(ctx, 20, 13, 6, 2, '#4a4f57');
+  // cọng thép lòi (gỉ)
+  ctx.strokeStyle = '#6b4326'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(9, 15); ctx.lineTo(7, 9); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(22, 13); ctx.lineTo(25, 8); ctx.stroke();
+  // viền các khối
+  ctx.strokeStyle = '#16181c'; ctx.lineWidth = 1;
+  ctx.strokeRect(6, 16, 9, 8); ctx.strokeRect(15, 18, 8, 8); ctx.strokeRect(11, 12, 7, 7);
+}
 
-  // Highlight trên
-  fr(ctx, 8, 8, 16, 3, '#aaaaaa');
-  fr(ctx, 6, 11, 4, 2, '#999999');
+// ─── BARREL — thùng phuy 32×32 (frame 0 gỉ, frame 1 độc phát sáng) ──────────────
+function drawBarrel(ctx, frame) {
+  const toxic = frame === 1;
+  fc(ctx, 16, 28, 8, 'rgba(0,0,0,0.35)');       // bóng
+  grect(ctx, 9, 7, 14, 22, toxic ? '#3a5a2a' : '#6b4326', toxic ? '#1f3315' : '#3c2616');
+  fr(ctx, 9, 12, 14, 2, toxic ? '#2a3f1d' : '#4d3019'); // đai
+  fr(ctx, 9, 22, 14, 2, toxic ? '#2a3f1d' : '#4d3019');
+  fr(ctx, 12, 9, 2, 18, toxic ? '#28401c' : '#3c2616'); // vệt gỉ dọc
+  ctx.fillStyle = toxic ? '#4a7032' : '#7a4e2c';        // nắp trên
+  ctx.beginPath(); ctx.ellipse(16, 7, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#100c08'; ctx.lineWidth = 1; ctx.strokeRect(9, 7, 14, 22);
+  if (toxic) {
+    glow(ctx, '#9bd83a', 5, () => {
+      ctx.fillStyle = '#bff05a';
+      ctx.beginPath(); ctx.ellipse(16, 7, 5, 2, 0, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+}
 
-  // Bóng dưới-phải
-  fr(ctx, 8, 23, 16, 3, '#4a4a4a');
-  fr(ctx, 22, 12, 4, 10, '#555555');
-
-  // Vết nứt nhỏ
-  fr(ctx, 13, 13, 1, 5, '#444444');
-  fr(ctx, 14, 17, 3, 1, '#444444');
-  fr(ctx, 20, 11, 1, 4, '#555555');
+// ─── DECAL — vệt phẳng 32×32 (frame 0 máu, frame 1 cháy) — không có physics ──────
+function drawDecal(ctx, frame) {
+  if (frame === 0) { // máu khô
+    fc(ctx, 16, 16, 9, 'rgba(92,12,12,0.5)');
+    fc(ctx, 12, 13, 4, 'rgba(70,8,8,0.55)');
+    fc(ctx, 21, 19, 3, 'rgba(70,8,8,0.5)');
+    fc(ctx, 23, 11, 1.5, 'rgba(82,10,10,0.5)');
+    fc(ctx, 9, 22, 1.5, 'rgba(82,10,10,0.5)');
+  } else {            // vệt cháy
+    fc(ctx, 16, 16, 10, 'rgba(10,8,6,0.55)');
+    fc(ctx, 16, 16, 6, 'rgba(4,3,2,0.6)');
+    fc(ctx, 11, 12, 2, 'rgba(22,16,10,0.4)');
+  }
 }
 
 // ─── WATER — 48x48 ────────────────────────────────────────────────────────────
@@ -656,19 +868,71 @@ function drawWater(ctx, frame) {
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function generateAllTextures(scene) {
-  makeAtlas(scene, 'player_gunner',  16, drawGunner);
-  makeAtlas(scene, 'player_tank',    16, drawTank);
-  makeAtlas(scene, 'player_medic',   16, drawMedic);
-  makeAtlas(scene, 'player_trapper', 16, drawTrapper);
+// ─── URBAN GROUND — nhựa đường nứt (4 frames: base + nứt + vết dầu + vạch kẻ) ────
+function drawAsphalt(ctx, frame) {
+  fr(ctx, 0, 0, 32, 32, '#26282C');          // base asphalt tối
+  fr(ctx, 0, 0, 16, 16, '#2A2C30');          // khối tông nhẹ
+  fr(ctx, 16, 16, 16, 16, '#2A2C30');
+  const spk = [[4, 6], [20, 10], [12, 24], [28, 18], [8, 28], [24, 4]];
+  spk.forEach(([x, y]) => fr(ctx, x, y, 1, 1, (x + y + frame) % 2 ? '#34373C' : '#1E2024'));
+  if (frame === 1) {                          // vết nứt
+    ctx.strokeStyle = '#15171A'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(2, 8); ctx.lineTo(12, 14); ctx.lineTo(18, 12); ctx.lineTo(30, 22); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(12, 14); ctx.lineTo(14, 26); ctx.stroke();
+  } else if (frame === 2) {                    // vết dầu loang
+    fc(ctx, 16, 16, 9, 'rgba(8,8,12,0.55)');
+    fc(ctx, 13, 14, 4, 'rgba(4,4,7,0.6)');
+  } else if (frame === 3) {                    // vạch kẻ đường mờ
+    fr(ctx, 13, 0, 5, 32, 'rgba(184,160,86,0.16)');
+    fr(ctx, 13, 4, 5, 8, 'rgba(0,0,0,0.18)');
+  }
+}
 
-  makeAtlas(scene, 'zombie_walker',   8, drawWalker);
-  makeAtlas(scene, 'zombie_runner',   8, drawRunner);
-  makeAtlas(scene, 'zombie_brute',    8, drawBrute);
-  makeAtlas(scene, 'zombie_spitter',  8, drawSpitter);
-  makeAtlas(scene, 'zombie_screamer', 8, drawScreamer);
-  makeAtlas(scene, 'zombie_exploder', 8, drawExploder);
-  makeAtlas(scene, 'zombie_hordeking', 8, drawHordeking);
+// ─── WRECK — xác xe cháy 48×48 (collidable) ──────────────────────────────────────
+function drawWreck(ctx) {
+  fr(ctx, 7, 9, 38, 33, 'rgba(0,0,0,0.4)');         // bóng đổ
+  grect(ctx, 8, 6, 32, 36, '#3A2A26', '#241815');   // thân xe cháy
+  fr(ctx, 10, 8, 28, 7, '#33241F');                 // capo
+  fr(ctx, 10, 33, 28, 7, '#2C201C');                // cốp
+  grect(ctx, 12, 16, 24, 16, '#2A1E1B', '#1A1210'); // khoang cabin
+  fr(ctx, 14, 17, 20, 6, '#0A0A0C');                // kính vỡ (lỗ tối)
+  fr(ctx, 14, 24, 20, 6, '#0A0A0C');
+  fc(ctx, 13, 12, 3, '#5A3A1E');                    // gỉ sét
+  fc(ctx, 35, 36, 3, '#5A3A1E');
+  fr(ctx, 5, 11, 4, 8, '#101012');                  // bánh xe
+  fr(ctx, 39, 11, 4, 8, '#101012');
+  fr(ctx, 5, 29, 4, 8, '#101012');
+  fr(ctx, 39, 29, 4, 8, '#101012');
+  ctx.strokeStyle = '#0A0A0C'; ctx.lineWidth = 1; ctx.strokeRect(8, 6, 32, 36);
+  glow(ctx, '#FF6A22', 4, () => fc(ctx, 24, 24, 2, 'rgba(255,120,40,0.55)')); // than hồng âm ỉ
+}
+
+// ─── STREETLIGHT — đèn đường 48×48 (collidable ở chân cột) ───────────────────────
+function drawStreetlight(ctx) {
+  fc(ctx, 24, 34, 9, 'rgba(0,0,0,0.4)');             // bóng chân cột
+  fc(ctx, 24, 32, 6, '#3a3e44');                      // bệ bê-tông
+  fc(ctx, 24, 32, 4, '#2a2d32');
+  grect(ctx, 22, 10, 4, 24, '#565b62', '#33373c');    // cột
+  fr(ctx, 22, 10, 13, 3, '#44484e');                  // tay đèn
+  grect(ctx, 31, 7, 9, 7, '#666b72', '#3a3e44');      // chụp đèn
+  glow(ctx, '#ffd27a', 6, () => fc(ctx, 35, 12, 2.6, '#ffe9b0')); // bóng đèn ấm
+  fc(ctx, 35, 12, 1.4, '#fff6db');
+}
+
+export function generateAllTextures(scene) {
+  // Tất cả model redesign ở 48px (survivor + zombie hung tợn)
+  makeAtlas(scene, 'player_gunner',  16, drawGunner, 48, 48);
+  makeAtlas(scene, 'player_tank',    16, drawTank, 48, 48);
+  makeAtlas(scene, 'player_medic',   16, drawMedic, 48, 48);
+  makeAtlas(scene, 'player_trapper', 16, drawTrapper, 48, 48);
+
+  makeAtlas(scene, 'zombie_walker',   8, drawWalker, 48, 48);
+  makeAtlas(scene, 'zombie_runner',   8, drawRunner, 48, 48);
+  makeAtlas(scene, 'zombie_brute',    8, drawBrute, 48, 48);
+  makeAtlas(scene, 'zombie_spitter',  8, drawSpitter, 48, 48);
+  makeAtlas(scene, 'zombie_screamer', 8, drawScreamer, 48, 48);
+  makeAtlas(scene, 'zombie_exploder', 8, drawExploder, 48, 48);
+  makeAtlas(scene, 'zombie_hordeking', 8, drawHordeking, 48, 48);
 
   // ─── Decorations ──────────────────────────────────────────────────────────────
 
@@ -677,6 +941,37 @@ export function generateAllTextures(scene) {
 
   // Đá — 1 frame, 32×32 (dùng makeAtlas được)
   makeAtlas(scene, 'rock', 1, drawRock);
+
+  // Nhựa đường — 4 frames (base + nứt + dầu + vạch kẻ)
+  makeAtlas(scene, 'asphalt', 4, drawAsphalt);
+
+  // Thùng phuy — 2 frames (gỉ / độc); Decal máu-cháy — 2 frames
+  makeAtlas(scene, 'barrel', 2, drawBarrel);
+  makeAtlas(scene, 'decal', 2, drawDecal);
+
+  // Xác xe cháy — 48×48, 1 frame
+  const wreckCt = scene.textures.createCanvas('wreck', 48, 48);
+  drawWreck(wreckCt.getContext('2d'));
+  wreckCt.refresh();
+
+  // Đèn đường — 48×48, 1 frame
+  const slCt = scene.textures.createCanvas('streetlight', 48, 48);
+  drawStreetlight(slCt.getContext('2d'));
+  slCt.refresh();
+
+  // Quầng sáng ấm (radial) — dùng cho đèn đường, blend ADD để "rọi" qua bóng đêm
+  if (!scene.textures.exists('lightpool')) {
+    const lp = 160;
+    const lpCt = scene.textures.createCanvas('lightpool', lp, lp);
+    const lctx = lpCt.getContext('2d');
+    const lg = lctx.createRadialGradient(lp / 2, lp / 2, 6, lp / 2, lp / 2, lp / 2);
+    lg.addColorStop(0,   'rgba(255,209,122,0.55)');
+    lg.addColorStop(0.5, 'rgba(255,180,80,0.22)');
+    lg.addColorStop(1,   'rgba(255,170,70,0)');
+    lctx.fillStyle = lg;
+    lctx.fillRect(0, 0, lp, lp);
+    lpCt.refresh();
+  }
 
   // Cây — 48×48, tạo thủ công (khác kích thước FW/FH)
   const treeCt = scene.textures.createCanvas('tree', 48, 48);
