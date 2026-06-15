@@ -183,6 +183,20 @@ function generateMapLayout() {
   return walls;
 }
 
+// Khởi tạo state spawn cho 1 wave (dùng chung bởi host_ready_to_spawn & start_next_wave)
+function initWave(room) {
+  const playerCount = room.players.filter(p => p.isAlive).length || 1;
+  const baseCount = Math.floor(3 + room.currentWave * 1.5 + room.currentWave * room.currentWave * 0.15);
+  const isBossWave = room.currentWave === 5 || room.currentWave === 10; // boss spawn đúng 1 con
+  room.isWaveActive = true;
+  room.zombiesToSpawn = isBossWave ? 1 : Math.floor(baseCount * (0.5 + playerCount * 0.5));
+  room.zombiesSpawned = 0;
+  room.zombies = {};
+  room.lastSpawnTime = Date.now();
+  room.waveStartTime = Date.now();
+  room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
+}
+
 io.on('connection', (socket) => {
   console.log(`🔌 New client connected: ${socket.id}`);
 
@@ -339,10 +353,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Zombie Spawning (Bị loại bỏ do Server tự spawn)
-  socket.on('zombie_spawn', (data) => {});
-  socket.on('zombie_update', (data) => {});
-
   // Server nhận sát thương từ Client (Client nào bắn trúng cũng gửi)
   socket.on('zombie_damaged', (data) => {
     // data: { roomCode, zombieId, damage, effect }
@@ -418,18 +428,7 @@ io.on('connection', (socket) => {
       room.votes = {};
       room.voteResolved = false;
       io.to(roomCode).emit('next_wave_started', room.currentWave);
-
-      const playerCount = room.players.filter(p => p.isAlive).length || 1;
-      const baseCount = Math.floor(3 + room.currentWave * 1.5 + room.currentWave * room.currentWave * 0.15);
-      room.isWaveActive = true;
-      // Boss waves spawn đúng 1 con (theo design CLAUDE.md)
-      const isBossWave = room.currentWave === 5 || room.currentWave === 10;
-      room.zombiesToSpawn = isBossWave ? 1 : Math.floor(baseCount * (0.5 + playerCount * 0.5));
-      room.zombiesSpawned = 0;
-      room.zombies = {};
-      room.lastSpawnTime = Date.now();
-      room.waveStartTime = Date.now();
-      room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
+      initWave(room);
     }
   });
 
@@ -438,17 +437,7 @@ io.on('connection', (socket) => {
     const room = activeRooms[roomCode];
     if (room && socket.id === room.hostSocketId) {
       if (room.isWaveActive) return; // Đã active rồi thì bỏ qua (tránh double-init)
-      room.isWaveActive = true;
-      // Scale zombie count theo số người chơi (solo = ít hơn)
-      const playerCount = room.players.filter(p => p.isAlive).length || 1;
-      const baseCount = Math.floor(3 + room.currentWave * 1.5 + room.currentWave * room.currentWave * 0.15);
-      const isBossWave = room.currentWave === 5 || room.currentWave === 10;
-      room.zombiesToSpawn = isBossWave ? 1 : Math.floor(baseCount * (0.5 + playerCount * 0.5));
-      room.zombiesSpawned = 0;
-      room.zombies = {};
-      room.lastSpawnTime = Date.now();
-      room.waveStartTime = Date.now();
-      room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
+      initWave(room); // Scale zombie count theo số người chơi (solo = ít hơn)
     }
   });
 
@@ -509,39 +498,6 @@ io.on('connection', (socket) => {
 
 
 
-  // Revive: live teammate đứng gần xác (≤100px) trong vòng 30s
-  socket.on('revive_request', (data) => {
-    // data: { roomCode, targetId }
-    const room = activeRooms[data.roomCode];
-    if (!room) return;
-    const reviver = room.players.find(p => p.id === socket.id);
-    const target = room.players.find(p => p.id === data.targetId);
-    if (!reviver || !target) return;
-    if (!reviver.isAlive || target.isAlive) return;
-    if (!target.deathTime || Date.now() - target.deathTime > 30000) return;
-    const rx = reviver.x, ry = reviver.y;
-    if (rx === undefined || ry === undefined) return;
-    const dist = Math.hypot(rx - target.deathX, ry - target.deathY);
-    if (dist > 100) return;
-
-    target.isAlive = true;
-    target.x = target.deathX;
-    target.y = target.deathY;
-    reviver.revives = (reviver.revives || 0) + 1;
-
-    io.to(data.roomCode).emit('player_revived', {
-      targetId: target.id,
-      reviverId: reviver.id,
-      x: target.deathX,
-      y: target.deathY,
-      hp: 30
-    });
-
-    target.deathTime = null;
-    target.deathX = null;
-    target.deathY = null;
-  });
-
   socket.on('player_died', (data) => {
     const room = activeRooms[data.roomCode];
     if (!room) return;
@@ -565,17 +521,28 @@ io.on('connection', (socket) => {
       room.status = 'finished';
       const elapsedMs = Date.now() - (room.gameStartTime || Date.now());
       
-      // Tự động lưu Score vào DB
-      room.players.forEach(p => {
-        Score.create({
-          nickname: p.nickname,
-          playerClass: p.class || 'Gunner',
-          wave: room.currentWave,
-          kills: p.kills || 0,
-          score: p.score || 0,
-          playerCount: room.players.length
-        }).catch(err => console.error('Score save error:', err));
-      });
+      // Lưu Score (bulk) + cập nhật lifetime stats của user trong 1 lần
+      const finishedWave = room.currentWave;
+      const playerCount = room.players.length;
+      Score.insertMany(room.players.map(p => ({
+        nickname: p.nickname,
+        playerClass: p.class || 'Gunner',
+        wave: finishedWave,
+        kills: p.kills || 0,
+        score: p.score || 0,
+        playerCount
+      }))).catch(err => console.error('Score save error:', err));
+
+      // Cập nhật users.stats (khách không khớp document nào → bỏ qua, không upsert)
+      User.bulkWrite(room.players.map(p => ({
+        updateOne: {
+          filter: { nickname: p.nickname },
+          update: {
+            $inc: { 'stats.totalGames': 1, 'stats.totalKills': p.kills || 0, 'stats.totalScore': p.score || 0 },
+            $max: { 'stats.bestWave': finishedWave }
+          }
+        }
+      }))).catch(err => console.error('User stats update error:', err));
 
       io.to(data.roomCode).emit('game_over', {
         wave: room.currentWave,
