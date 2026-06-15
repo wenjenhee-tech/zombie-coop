@@ -18,6 +18,8 @@ const io = new Server(server, {
 });
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/zombie_coop';
+// URL service AI difficulty (Deep Learning). Không cấu hình → bỏ qua, dùng độ khó mặc định.
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || '';
 
 // Connect to MongoDB
 mongoose.connect(MONGO_URI)
@@ -682,6 +684,7 @@ setInterval(() => {
     // 2. Movement Logic (đuổi theo người chơi gần nhất, có honor effect/taunt)
     const alivePlayers = room.players.filter(p => p.isAlive && p.x !== undefined);
     const tauntActive = room.tauntActive && now < room.tauntActive.expireAt ? room.tauntActive : null;
+    const zombieUpdates = []; // gom tất cả update của tick này thành 1 message
     if (alivePlayers.length > 0) {
       for (const zId in room.zombies) {
         const zombie = room.zombies[zId];
@@ -744,8 +747,7 @@ setInterval(() => {
             zombie.y += Math.sin(angle) * moveDist;
             zombie.rotation = angle;
 
-            io.to(code).emit('zombie_updated', {
-              roomCode: code,
+            zombieUpdates.push({
               zombieId: zombie.id,
               x: zombie.x,
               y: zombie.y,
@@ -754,6 +756,10 @@ setInterval(() => {
           }
         }
       }
+    }
+    // Phát 1 message gom cho cả phòng (thay vì 1 message / 1 zombie)
+    if (zombieUpdates.length > 0) {
+      io.to(code).emit('zombies_updated', zombieUpdates);
     }
 
     // 2b. Mine Trigger Logic
@@ -851,19 +857,21 @@ setInterval(() => {
       Telemetry.create({ roomCode: code, wave, apm, avgAccuracy, hpLossRate, clearTime: clearTimeSec })
         .catch(e => console.error('Telemetry save error:', e));
 
-      // Fetch AI difficulty based on new telemetry
-      fetch('http://localhost:8000/predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wave, apm, avgAccuracy, hpLossRate, clearTime: clearTimeSec })
-      })
-      .then(res => res.json())
-      .then(params => {
-        AiDifficulty.create({ roomCode: code, wave, ...params }).catch(()=>{});
-        if (activeRooms[code]) activeRooms[code].difficultyParams = params;
-        io.to(code).emit('difficulty_update', params);
-      })
-      .catch(e => console.warn('AI service unavailable, using default difficulty'));
+      // Fetch AI difficulty based on new telemetry (chỉ khi AI_SERVICE_URL được cấu hình)
+      if (AI_SERVICE_URL) {
+        fetch(`${AI_SERVICE_URL}/predict`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wave, apm, avgAccuracy, hpLossRate, clearTime: clearTimeSec })
+        })
+        .then(res => res.json())
+        .then(params => {
+          AiDifficulty.create({ roomCode: code, wave, ...params }).catch(()=>{});
+          if (activeRooms[code]) activeRooms[code].difficultyParams = params;
+          io.to(code).emit('difficulty_update', params);
+        })
+        .catch(e => console.warn('AI service unavailable, using default difficulty'));
+      }
 
       const POWERUP_POOL = [
         { id: 'speed_boost', name: 'Speed Boost', desc: '+20% tốc độ di chuyển', tier: 1 },

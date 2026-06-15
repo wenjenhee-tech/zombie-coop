@@ -20,6 +20,15 @@ export default class GameScene extends Phaser.Scene {
     generateAllTextures(this);
     registerAnims(this);
 
+    // Pre-generate bullet textures MỘT LẦN (tránh tạo lại mỗi phát bắn → rò rỉ Graphics)
+    const bg = this.make.graphics({ x: 0, y: 0, add: false });
+    bg.fillStyle(0xffff00, 1); bg.fillCircle(4, 4, 4);
+    bg.generateTexture('bullet_normal', 8, 8);
+    bg.clear();
+    bg.fillStyle(0xffaa00, 1); bg.fillCircle(4, 4, 4);
+    bg.generateTexture('bullet_fire', 8, 8);
+    bg.destroy();
+
     // Set world bounds to 3200x3200
     this.physics.world.setBounds(0, 0, 1600, 1600);
     this.cameras.main.setBounds(0, 0, 1600, 1600);
@@ -135,7 +144,7 @@ export default class GameScene extends Phaser.Scene {
   setupMultiplayerSync() {
     // XÓA tất cả listener cũ trước khi thêm mới — tránh tích lũy qua nhiều game session
     const events = [
-      'player_moved', 'player_shot', 'zombie_spawned', 'zombie_updated',
+      'player_moved', 'player_shot', 'zombie_spawned', 'zombies_updated',
       'zombie_took_damage', 'heal_aoe', 'shield_wall_active', 'taunt_active',
       'intermission_start', 'next_wave_started', 'difficulty_update',
       'you_are_host', 'player_revived', 'mine_placed', 'mine_exploded',
@@ -191,11 +200,14 @@ export default class GameScene extends Phaser.Scene {
       this.zombies.add(zombie);
     });
 
-    store.socket.on('zombie_updated', (data) => {
-      const zombie = this.zombies.getChildren().find(z => z.id === data.zombieId);
-      if (zombie) {
-        zombie.setPosition(data.x, data.y);
-        // Không setRotation — hướng sprite được điều khiển bằng velocity-based anim
+    store.socket.on('zombies_updated', (list) => {
+      // 1 message chứa nhiều zombie — index theo id để cập nhật nhanh
+      const byId = {};
+      for (const z of this.zombies.getChildren()) byId[z.id] = z;
+      for (const data of list) {
+        const zombie = byId[data.zombieId];
+        // Không setRotation — hướng sprite điều khiển bằng velocity-based anim
+        if (zombie) zombie.setPosition(data.x, data.y);
       }
     });
 
@@ -519,21 +531,11 @@ export default class GameScene extends Phaser.Scene {
     if (!this.isWaveActive) return; // Prevent shooting between waves
 
     const bulletSize = 4;
-    const bulletGraphics = this.make.graphics({ x: 0, y: 0, add: false });
-    
-    // Fire ammo check
-    if (this.player.hasBuff('Fire Ammo')) {
-      bulletGraphics.fillStyle(0xffaa00, 1);
-    } else {
-      bulletGraphics.fillStyle(0xffff00, 1);
-    }
-    bulletGraphics.fillCircle(bulletSize, bulletSize, bulletSize);
-    bulletGraphics.generateTexture('bullet_tex', bulletSize * 2, bulletSize * 2);
-
     const bullet = this.bullets.get(this.player.x, this.player.y);
-    
+
     if (bullet) {
-      bullet.setTexture('bullet_tex');
+      // Dùng texture đã tạo sẵn trong create() — chỉ đổi theo buff Fire Ammo
+      bullet.setTexture(this.player.hasBuff('Fire Ammo') ? 'bullet_fire' : 'bullet_normal');
       bullet.setActive(true);
       bullet.setVisible(true);
       bullet.body.setSize(bulletSize*2, bulletSize*2);
@@ -594,17 +596,20 @@ export default class GameScene extends Phaser.Scene {
       store.playerStats.secondaryCDReadyRatio = Math.min(1, secondaryDiff / this.player.secondaryCooldown);
       store.playerStats.secondaryCooldownMs = this.player.secondaryCooldown;
 
-      // Emit movement
+      // Emit movement — throttle ~20Hz (50ms) thay vì mỗi frame (~60Hz)
       const isMoving = this.player.body.velocity.x !== 0 || this.player.body.velocity.y !== 0;
       if (isMoving) {
-        store.socket.emit('player_move', {
-          roomCode: store.playerStats.roomCode,
-          x: this.player.x,
-          y: this.player.y,
-          rotation: this.player.rotation,
-          velocityX: this.player.body.velocity.x,
-          velocityY: this.player.body.velocity.y
-        });
+        if (time - (this._lastMoveEmit || 0) >= 50) {
+          store.socket.emit('player_move', {
+            roomCode: store.playerStats.roomCode,
+            x: this.player.x,
+            y: this.player.y,
+            rotation: this.player.rotation,
+            velocityX: this.player.body.velocity.x,
+            velocityY: this.player.body.velocity.y
+          });
+          this._lastMoveEmit = time;
+        }
         this._wasMoving = true;
       } else if (this._wasMoving) {
         store.socket.emit('player_move', { 
