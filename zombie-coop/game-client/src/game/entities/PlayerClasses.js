@@ -15,6 +15,7 @@ export class Gunner extends Player {
     this.fireRate       = 150;
     this.primaryCooldown   = 18000;
     this.secondaryCooldown = 25000;
+    this.tertiaryCooldown  = 14000;
     this.piercingShots  = false;
     this.bulletSpeedMult = 1;
     this.critChance     = 0.2; // Nội tại "Sát Thủ": 20% chí mạng ×2 dmg
@@ -42,6 +43,25 @@ export class Gunner extends Player {
       this.piercingShots   = false;
       this.bulletSpeedMult = 1;
       if (this.active) this.clearTint();
+    });
+  }
+
+  // Active "Lựu Đạn Cụm" (R) — ném lựu đạn về phía chuột, nổ AoE bán kính 140, 60 dmg.
+  useTertiarySkill() {
+    const p = this.scene.input.activePointer;
+    const tx = p.worldX, ty = p.worldY;
+    const g = this.scene.add.graphics({ x: this.x, y: this.y });
+    g.fillStyle(0x2c3e50, 1); g.fillCircle(0, 0, 5);
+    g.fillStyle(0x27ae60, 1); g.fillCircle(0, 0, 2);
+    this.scene.tweens.add({
+      targets: g, x: tx, y: ty, duration: 500,
+      onComplete: () => {
+        g.destroy();
+        store.socket.emit('skill_burst', {
+          roomCode: store.playerStats.roomCode,
+          x: tx, y: ty, radius: 140, damage: 60, effect: null, fx: 'grenade'
+        });
+      }
     });
   }
 
@@ -75,6 +95,7 @@ export class Tank extends Player {
     this.fireRate       = 200;
     this.primaryCooldown   = 22000;
     this.secondaryCooldown = 16000;
+    this.tertiaryCooldown  = 16000;
     this.hitCount = 0;
     this.thornsRatio = 0.3; // Nội tại "Phản Đòn": dội 30% dmg về zombie tấn công
   }
@@ -121,6 +142,14 @@ export class Tank extends Player {
     });
   }
 
+  // Active "Giậm Đất" (R) — giậm tại chỗ, bán kính 160: 35 dmg + làm chậm zombie 2s.
+  useTertiarySkill() {
+    store.socket.emit('skill_burst', {
+      roomCode: store.playerStats.roomCode,
+      x: this.x, y: this.y, radius: 160, damage: 35, effect: 'slow', fx: 'slam'
+    });
+  }
+
   takeDamage(amount) {
     this.hitCount++;
     if (this.hitCount % 5 === 0) {
@@ -146,6 +175,7 @@ export class Medic extends Player {
     this.fireRate       = 180;
     this.primaryCooldown   = 20000;
     this.secondaryCooldown = 30000;
+    this.tertiaryCooldown  = 22000;
   }
 
   _redrawWeapon() {
@@ -171,6 +201,20 @@ export class Medic extends Player {
     effect.lineStyle(2, 0x2ecc71, 1);
     effect.strokeCircle(this.x, this.y, 130);
     this.scene.time.delayedCall(300, () => effect.destroy());
+  }
+
+  // Active "Liều Kích Thích" (R) — buff cả đội (gồm bản thân): +40% tốc bắn, +20% tốc chạy 6s.
+  useTertiarySkill() {
+    this.applyStim(6000);
+    store.socket.emit('team_stim', {
+      roomCode: store.playerStats.roomCode,
+      duration: 6000,
+      sourceId: store.socket.id
+    });
+    const fx = this.scene.add.graphics();
+    fx.lineStyle(3, 0xffe066, 1);
+    fx.strokeCircle(this.x, this.y, 90);
+    this.scene.time.delayedCall(300, () => fx.destroy());
   }
 
   passiveTick(time) {
@@ -210,6 +254,7 @@ export class Trapper extends Player {
     this.fireRate       = 150;
     this.primaryCooldown   = 20000;
     this.secondaryCooldown = 12000;
+    this.tertiaryCooldown  = 15000;
   }
 
   _redrawWeapon() {
@@ -239,6 +284,28 @@ export class Trapper extends Player {
       roomCode: store.playerStats.roomCode,
       x: this.x, y: this.y,
       isFreeze: true
+    });
+  }
+
+  // Active "Súng Lưới" (R) — bắn lưới (tầm tối đa 320) đóng băng zombie vùng 120 trong 3s + 20 dmg.
+  useTertiarySkill() {
+    const p = this.scene.input.activePointer;
+    const ang = Phaser.Math.Angle.Between(this.x, this.y, p.worldX, p.worldY);
+    const range = Math.min(Phaser.Math.Distance.Between(this.x, this.y, p.worldX, p.worldY), 320);
+    const tx = this.x + Math.cos(ang) * range;
+    const ty = this.y + Math.sin(ang) * range;
+    const net = this.scene.add.graphics({ x: this.x, y: this.y });
+    net.lineStyle(2, 0xecf0f1, 1);
+    net.strokeCircle(0, 0, 6);
+    this.scene.tweens.add({
+      targets: net, x: tx, y: ty, duration: 350,
+      onComplete: () => {
+        net.destroy();
+        store.socket.emit('skill_burst', {
+          roomCode: store.playerStats.roomCode,
+          x: tx, y: ty, radius: 120, damage: 20, effect: 'freeze', fx: 'net'
+        });
+      }
     });
   }
 

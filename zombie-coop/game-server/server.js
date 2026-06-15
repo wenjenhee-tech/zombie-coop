@@ -197,6 +197,36 @@ function initWave(room) {
   room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
 }
 
+// Áp sát thương lên 1 zombie theo cách server-authoritative: trừ máu, cộng điểm cho
+// attacker, xử lý screamer-split khi chết, broadcast zombie_took_damage. Dùng chung bởi
+// skill_burst (và có thể tái dùng cho zombie_damaged/mìn sau này).
+function applyZombieDamage(room, code, zId, damage, attackerId) {
+  const z = room.zombies[zId];
+  if (!z || z.isDead) return;
+  z.hp -= damage;
+  io.to(code).emit('zombie_took_damage', { roomCode: code, zombieId: zId, damage });
+  if (z.hp > 0) return;
+
+  z.isDead = true;
+  const score = z.type === 'hordeking' ? 1000 : z.type === 'brute' ? 400 : z.type === 'runner' ? 40 : 100;
+  const killer = room.players.find(p => p.id === attackerId);
+  if (killer) { killer.kills++; killer.score += score; }
+
+  const wasScreamer = z.type === 'screamer';
+  const dx = z.x, dy = z.y;
+  delete room.zombies[zId];
+
+  if (wasScreamer) {
+    for (let i = 0; i < 3; i++) {
+      const ox = Math.floor(Math.random() * 80) - 40;
+      const oy = Math.floor(Math.random() * 80) - 40;
+      const newId = Math.random().toString(36).substring(2, 9);
+      room.zombies[newId] = { id: newId, type: 'walker', x: dx + ox, y: dy + oy, hp: 30, speed: 50, rotation: 0 };
+      io.to(code).emit('zombie_spawned', { roomCode: code, zombieId: newId, type: 'walker', x: dx + ox, y: dy + oy, hp: 30 });
+    }
+  }
+}
+
 io.on('connection', (socket) => {
   console.log(`🔌 New client connected: ${socket.id}`);
 
@@ -493,6 +523,42 @@ io.on('connection', (socket) => {
     };
     // Broadcast mine visual cho tất cả client
     io.to(data.roomCode).emit('mine_placed', { mineId, x: data.x, y: data.y, isFreeze: data.isFreeze });
+  });
+
+  // ACTIVE SKILLS (slot R) — sát thương + hiệu ứng vùng, server-authoritative
+  socket.on('skill_burst', (data) => {
+    // data: { roomCode, x, y, radius, damage, effect, fx }
+    const room = activeRooms[data.roomCode];
+    if (!room || !room.zombies) return;
+    const now = Date.now();
+    const radius = data.radius || 120;
+    const dmg = data.damage || 0;
+
+    for (const zId in room.zombies) {
+      const z = room.zombies[zId];
+      if (z.isDead) continue;
+      if (Math.hypot(z.x - data.x, z.y - data.y) > radius) continue;
+      if (dmg > 0) applyZombieDamage(room, data.roomCode, zId, dmg, socket.id);
+      // zombie có thể đã bị xóa nếu vừa chết — lấy lại tham chiếu để gắn hiệu ứng
+      const zz = room.zombies[zId];
+      if (zz && !zz.isDead && data.effect) {
+        zz.effects = zz.effects || {};
+        if (data.effect === 'freeze') zz.effects.freeze = now + 3000;
+        else if (data.effect === 'slow') zz.effects.slow = now + 2000;
+      }
+    }
+    io.to(data.roomCode).emit('skill_burst_fx', {
+      x: data.x, y: data.y, radius, effect: data.effect || null, fx: data.fx || null
+    });
+  });
+
+  socket.on('team_stim', (data) => {
+    // data: { roomCode, duration, sourceId } — chỉ Medic được phát
+    const room = activeRooms[data.roomCode];
+    if (!room) return;
+    const sender = room.players.find(p => p.id === socket.id);
+    if (!sender || (sender.class || '').toLowerCase() !== 'medic') return;
+    socket.to(data.roomCode).emit('team_stim', data);
   });
 
 

@@ -22,6 +22,7 @@ export const store = reactive({
     isAlive: true,
     primaryCDReadyRatio: 1,
     secondaryCDReadyRatio: 1,
+    tertiaryCDReadyRatio: 1,
     shotsFired: 0,
     shotsHit: 0
   },

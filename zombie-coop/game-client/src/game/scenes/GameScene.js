@@ -148,7 +148,7 @@ export default class GameScene extends Phaser.Scene {
       'zombie_took_damage', 'heal_aoe', 'shield_wall_active', 'taunt_active',
       'intermission_start', 'next_wave_started', 'difficulty_update',
       'you_are_host', 'player_revived', 'mine_placed', 'mine_exploded',
-      'exploder_exploded', 'player_died'
+      'exploder_exploded', 'player_died', 'skill_burst_fx', 'team_stim'
     ];
     events.forEach(e => store.socket.off(e));
 
@@ -264,6 +264,24 @@ export default class GameScene extends Phaser.Scene {
           zombie.tauntUntil = this.time.now + data.duration;
         }
       });
+    });
+
+    // Skill chủ động (R) gây sát thương/hiệu ứng vùng — server xử lý damage+effect,
+    // client chỉ vẽ hiệu ứng nổ/sóng/lưới.
+    store.socket.on('skill_burst_fx', ({ x, y, radius, fx }) => {
+      const color = fx === 'slam' ? 0xe74c3c : fx === 'net' ? 0x00ffff : 0xf1c40f;
+      const ring = this.add.graphics();
+      ring.fillStyle(color, 0.4);
+      ring.fillCircle(x, y, radius);
+      ring.lineStyle(3, color, 0.9);
+      ring.strokeCircle(x, y, radius);
+      this.time.delayedCall(280, () => ring.destroy());
+    });
+
+    // Medic "Liều Kích Thích" — đồng đội nhận buff lên player local của mình.
+    store.socket.on('team_stim', (data) => {
+      if (data.sourceId === store.socket.id) return;
+      if (this.player && this.player.active) this.player.applyStim(data.duration);
     });
 
     store.socket.on('intermission_start', (data) => {
@@ -595,6 +613,10 @@ export default class GameScene extends Phaser.Scene {
       const secondaryDiff = time - this.player.lastSecondaryUsed;
       store.playerStats.secondaryCDReadyRatio = Math.min(1, secondaryDiff / this.player.secondaryCooldown);
       store.playerStats.secondaryCooldownMs = this.player.secondaryCooldown;
+
+      const tertiaryDiff = time - this.player.lastTertiaryUsed;
+      store.playerStats.tertiaryCDReadyRatio = Math.min(1, tertiaryDiff / this.player.tertiaryCooldown);
+      store.playerStats.tertiaryCooldownMs = this.player.tertiaryCooldown;
 
       // Emit movement — throttle ~20Hz (50ms) thay vì mỗi frame (~60Hz)
       const isMoving = this.player.body.velocity.x !== 0 || this.player.body.velocity.y !== 0;

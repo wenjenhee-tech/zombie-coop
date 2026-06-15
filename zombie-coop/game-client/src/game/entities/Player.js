@@ -6,7 +6,8 @@ const BUFF_INCREMENTS = {
   'Fire Ammo':   [1, 1, 1],
   'Regen Aura':  [1.0, 0.5, 0.25],   // HP/s per stack
   'Rapid Fire':  [0.25, 0.15, 0.10],  // fire-rate multiplier per stack
-  'Medkit Surge':[20,   15,   10]      // immediate HP per stack
+  'Medkit Surge':[20,   15,   10],     // immediate HP per stack
+  'Combat Stim': [0.20]                // +20% tốc chạy (Medic Liều Kích Thích)
 };
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
@@ -48,7 +49,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       left:           Phaser.Input.Keyboard.KeyCodes.A,
       right:          Phaser.Input.Keyboard.KeyCodes.D,
       primarySkill:   Phaser.Input.Keyboard.KeyCodes.Q,
-      secondarySkill: Phaser.Input.Keyboard.KeyCodes.E
+      secondarySkill: Phaser.Input.Keyboard.KeyCodes.E,
+      tertiarySkill:  Phaser.Input.Keyboard.KeyCodes.R
     });
 
     // Skill cooldown tracking
@@ -56,6 +58,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.primaryCooldown   = 5000;
     this.lastSecondaryUsed = 0;
     this.secondaryCooldown = 5000;
+    this.lastTertiaryUsed  = 0;
+    this.tertiaryCooldown  = 5000;
   }
 
   // Subclasses override to draw their weapon shape
@@ -91,6 +95,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
         this.lastSecondaryUsed = time;
       }
     }
+
+    if (Phaser.Input.Keyboard.JustDown(this.cursors.tertiarySkill)) {
+      if (time > this.lastTertiaryUsed + this.tertiaryCooldown) {
+        this.useTertiarySkill();
+        this.lastTertiaryUsed = time;
+      }
+    }
   }
 
   handleMovement() {
@@ -102,7 +113,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     const vec = new Phaser.Math.Vector2(vx, vy).normalize();
     let spd = this.speed;
-    spd *= (1 + this.getBuffValue('Speed Boost'));
+    spd *= (1 + this.getBuffValue('Speed Boost') + this.getBuffValue('Combat Stim'));
     this.setVelocity(vec.x * spd, vec.y * spd);
   }
 
@@ -179,7 +190,25 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
   usePrimarySkill()   { console.log(`${this.className} used primary skill!`); }
   useSecondarySkill() { console.log(`${this.className} used secondary skill!`); }
+  useTertiarySkill()  { console.log(`${this.className} used tertiary skill!`); }
   passiveTick(_time)  {}
+
+  // Liều Kích Thích (Medic) — buff +40% tốc bắn, +20% tốc chạy trong `duration`ms.
+  // Áp cho chính người gọi và cho mỗi đồng đội qua event team_stim.
+  applyStim(duration = 6000) {
+    if (this._stimActive) return;
+    this._stimActive = true;
+    this.addBuff('Combat Stim');
+    const origFireRate = this.fireRate;
+    this.fireRate = Math.round(origFireRate * 0.6);
+    this.setTint(0xffe066);
+    this.scene.time.delayedCall(duration, () => {
+      this.removeBuff('Combat Stim');
+      this.fireRate = origFireRate;
+      this._stimActive = false;
+      if (this.active) this.clearTint();
+    });
+  }
 
   _basePassive(time) {
     if (this.hasBuff('Regen Aura') && time > (this.lastHit || 0) + 5000) {

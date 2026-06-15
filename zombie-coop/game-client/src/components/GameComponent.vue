@@ -50,6 +50,21 @@
               {{ secondaryReady ? (skills[1]?.passive ? 'AUTO' : 'READY') : secondaryRemaining + 's' }}
             </span>
           </div>
+
+          <!-- Tertiary Skill (R) -->
+          <div v-if="skills[2]" class="skill-btn" :class="{ ready: tertiaryReady }">
+            <span class="skill-key-badge key-r">R</span>
+            <span class="skill-btn-name">{{ skills[2]?.name }}</span>
+            <div class="cd-bar-bg">
+              <div
+                class="cd-bar-fill"
+                :style="{ width: ((store.playerStats.tertiaryCDReadyRatio ?? 1) * 100) + '%' }"
+              ></div>
+            </div>
+            <span class="cd-time" :class="{ 'ready-text': tertiaryReady }">
+              {{ tertiaryReady ? 'READY' : tertiaryRemaining + 's' }}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -67,19 +82,23 @@ let game = null;
 const CLASS_SKILLS = {
   Gunner:  [
     { key: 'Q', name: 'Mưa Đạn',    passive: false },
-    { key: 'Passive', name: 'Adrenaline', passive: true }
+    { key: 'Passive', name: 'Adrenaline', passive: true },
+    { key: 'R', name: 'Lựu Đạn Cụm', passive: false }
   ],
   Tank:    [
     { key: 'Q', name: 'Khiên Thép',  passive: false },
-    { key: 'E', name: 'Khiêu Chiến', passive: false }
+    { key: 'E', name: 'Khiêu Chiến', passive: false },
+    { key: 'R', name: 'Giậm Đất',    passive: false }
   ],
   Medic:   [
     { key: 'Q', name: 'Cứu Thương',  passive: false },
-    { key: 'Passive', name: 'Khử Rung Tim', passive: true }
+    { key: 'Passive', name: 'Khử Rung Tim', passive: true },
+    { key: 'R', name: 'Liều Kích Thích', passive: false }
   ],
   Trapper: [
     { key: 'Q', name: 'Bãi Mìn',    passive: false },
-    { key: 'E', name: 'Bẫy Băng',   passive: false }
+    { key: 'E', name: 'Bẫy Băng',   passive: false },
+    { key: 'R', name: 'Súng Lưới',  passive: false }
   ]
 };
 
@@ -87,6 +106,8 @@ const skills = computed(() => CLASS_SKILLS[store.playerStats.class] ?? CLASS_SKI
 
 const primaryReady    = computed(() => (store.playerStats.primaryCDReadyRatio  ?? 1) >= 1);
 const secondaryReady  = computed(() => (store.playerStats.secondaryCDReadyRatio ?? 1) >= 1);
+
+const tertiaryReady   = computed(() => (store.playerStats.tertiaryCDReadyRatio ?? 1) >= 1);
 
 const primaryRemaining = computed(() => {
   const ratio = store.playerStats.primaryCDReadyRatio ?? 1;
@@ -96,6 +117,11 @@ const primaryRemaining = computed(() => {
 const secondaryRemaining = computed(() => {
   const ratio = store.playerStats.secondaryCDReadyRatio ?? 1;
   const cd    = store.playerStats.secondaryCooldownMs   ?? 0;
+  return Math.max(0, (cd * (1 - ratio) / 1000)).toFixed(1);
+});
+const tertiaryRemaining = computed(() => {
+  const ratio = store.playerStats.tertiaryCDReadyRatio ?? 1;
+  const cd    = store.playerStats.tertiaryCooldownMs   ?? 0;
   return Math.max(0, (cd * (1 - ratio) / 1000)).toFixed(1);
 });
 
@@ -231,6 +257,7 @@ onUnmounted(() => {
 }
 .key-q       { background: #b71c1c; color: #fff; }
 .key-e       { background: #bf360c; color: #fff; }
+.key-r       { background: #6a1b9a; color: #fff; }
 .key-passive { background: #2a2a2a; color: #888; border: 1px solid #555; }
 
 .skill-btn-name {

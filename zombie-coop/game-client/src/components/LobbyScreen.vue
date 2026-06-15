@@ -131,7 +131,8 @@ const classes = [
     stats: { hp: 80, speed: 210, dmg: 35 },
     skills: [
       { key: 'Q', name: 'Mưa Đạn', desc: 'Xuyên giáp, tốc độ đạn ×2 trong 3 giây' },
-      { key: 'Passive', name: 'Adrenaline', desc: 'HP < 30% → tự động tăng 40% tốc bắn' }
+      { key: 'Passive', name: 'Adrenaline', desc: 'HP < 30% → tự động tăng 40% tốc bắn' },
+      { key: 'R', name: 'Lựu Đạn Cụm', desc: 'Ném lựu đạn nổ AoE, 60 sát thương cả cụm zombie' }
     ]
   },
   {
@@ -141,6 +142,7 @@ const classes = [
     skills: [
       { key: 'Q', name: 'Khiên Thép', desc: 'Giảm 60% sát thương nhận trong 5 giây' },
       { key: 'E', name: 'Khiêu Chiến', desc: 'Kéo zombie tập trung vào mình trong 8 giây' },
+      { key: 'R', name: 'Giậm Đất', desc: 'Giậm đất gây 35 sát thương + làm chậm zombie quanh mình 2s' },
       { key: 'Passive', name: 'Chặn Đòn', desc: 'Chặn hoàn toàn mỗi đòn thứ 5' }
     ]
   },
@@ -150,7 +152,8 @@ const classes = [
     stats: { hp: 90, speed: 230, dmg: 15 },
     skills: [
       { key: 'Q', name: 'Cứu Thương', desc: 'Hồi 30 HP cho bản thân và đồng đội xung quanh' },
-      { key: 'Passive', name: 'Khử Rung Tim', desc: 'HP < 10% → tự hồi 30 HP (CD: 30s)' }
+      { key: 'Passive', name: 'Khử Rung Tim', desc: 'HP < 10% → tự hồi 30 HP (CD: 30s)' },
+      { key: 'R', name: 'Liều Kích Thích', desc: 'Buff cả đội +40% tốc bắn, +20% tốc chạy trong 6s' }
     ]
   },
   {
@@ -159,7 +162,8 @@ const classes = [
     stats: { hp: 85, speed: 230, dmg: 15 },
     skills: [
       { key: 'Q', name: 'Bãi Mìn', desc: 'Đặt 5 mìn AoE gây sát thương vùng' },
-      { key: 'E', name: 'Bẫy Băng', desc: 'Đặt 1 mìn đóng băng zombie trong 3 giây' }
+      { key: 'E', name: 'Bẫy Băng', desc: 'Đặt 1 mìn đóng băng zombie trong 3 giây' },
+      { key: 'R', name: 'Súng Lưới', desc: 'Bắn lưới đóng băng zombie trong vùng 3s + 20 sát thương' }
     ]
   }
 ];
@@ -455,6 +459,7 @@ const requestJoin = (roomId) => {
 }
 .skill-key.key-q       { background: #d32f2f; color: #fff; }
 .skill-key.key-e       { background: #bf360c; color: #fff; }
+.skill-key.key-r       { background: #6a1b9a; color: #fff; }
 .skill-key.key-passive { background: #333; color: #aaa; border: 1px solid #555; }
 
 .skill-info {
