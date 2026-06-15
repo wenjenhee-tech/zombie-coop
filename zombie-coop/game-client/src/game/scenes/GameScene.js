@@ -652,12 +652,20 @@ export default class GameScene extends Phaser.Scene {
         bullet.setVisible(false);
       }
       
+      // Nội tại "Sát Thủ" (Gunner): chí mạng ×2 dmg
+      let dmg = bullet.damage || 15;
+      if (Math.random() < (this.player.critChance || 0)) {
+        dmg *= 2;
+        const t = this.add.text(zombie.x, zombie.y - 24, 'CRIT!', { fontSize: '13px', fill: '#ffdd33', fontStyle: 'bold' });
+        this.time.delayedCall(500, () => t.destroy());
+      }
+
       // Chỉ gửi lên server — server sẽ broadcast zombie_took_damage về cho tất cả
       // KHÔNG gọi zombie.takeDamage() ở đây để tránh double damage
       store.socket.emit('zombie_damaged', {
         roomCode: store.playerStats.roomCode,
         zombieId: zombie.id,
-        damage: bullet.damage || 15
+        damage: dmg
       });
 
       this.shotsHit++;
@@ -696,6 +704,15 @@ export default class GameScene extends Phaser.Scene {
       store.playerStats.hp = player.hp;
       this.hpLostThisWave += zombie.damage;
       player.lastHit = this.time.now;
+
+      // Nội tại "Phản Đòn" (Tank): dội 1 phần dmg về zombie tấn công
+      if (player.thornsRatio && zombie.active && zombie.damage > 0) {
+        store.socket.emit('zombie_damaged', {
+          roomCode: store.playerStats.roomCode,
+          zombieId: zombie.id,
+          damage: Math.round(zombie.damage * player.thornsRatio)
+        });
+      }
 
       if (player.hp <= 0) {
         this.handlePlayerDeath();

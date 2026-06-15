@@ -33,6 +33,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.activeBuffs = {};
     this.buffValues = {};
 
+    // Nội tại (passive) — subclass override; mặc định tắt
+    this.critChance  = 0; // Gunner: tỉ lệ chí mạng ×2 dmg
+    this.thornsRatio = 0; // Tank: tỉ lệ dmg dội ngược về zombie tấn công
+
     // Weapon graphics layer (rotates toward mouse, drawn on top)
     this.weaponGraphics = scene.add.graphics();
     this._redrawWeapon();

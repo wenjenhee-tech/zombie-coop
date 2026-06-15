@@ -17,6 +17,7 @@ export class Gunner extends Player {
     this.secondaryCooldown = 25000;
     this.piercingShots  = false;
     this.bulletSpeedMult = 1;
+    this.critChance     = 0.2; // Nội tại "Sát Thủ": 20% chí mạng ×2 dmg
   }
 
   _redrawWeapon() {
@@ -75,6 +76,7 @@ export class Tank extends Player {
     this.primaryCooldown   = 22000;
     this.secondaryCooldown = 16000;
     this.hitCount = 0;
+    this.thornsRatio = 0.3; // Nội tại "Phản Đòn": dội 30% dmg về zombie tấn công
   }
 
   _redrawWeapon() {
@@ -172,6 +174,18 @@ export class Medic extends Player {
   }
 
   passiveTick(time) {
+    // Nội tại "Hào Quang Hồi Phục" — hồi 2HP cho cả đội (gồm bản thân) mỗi 2s
+    if (time > (this._lastAuraTick || 0) + 2000) {
+      this._lastAuraTick = time;
+      this.heal(2);
+      store.socket.emit('heal_aoe', {
+        roomCode:   store.playerStats.roomCode,
+        healAmount: 2,
+        sourceId:   store.socket.id
+      });
+    }
+
+    // Auto-Defib (giữ nguyên) — tự cứu khi máu ≤10%
     const isReady = time > this.lastSecondaryUsed + this.secondaryCooldown;
     if (!isReady) return;
     if (this.hp <= this.maxHp * 0.1 && this.hp > 0) {
@@ -226,5 +240,18 @@ export class Trapper extends Player {
       x: this.x, y: this.y,
       isFreeze: true
     });
+  }
+
+  passiveTick(time) {
+    // Nội tại "Đinh Tán" — tự rải mìn mỗi 6s khi đang di chuyển
+    const moving = Math.abs(this.body.velocity.x) > 10 || Math.abs(this.body.velocity.y) > 10;
+    if (moving && time > (this._lastCaltrop || 0) + 6000) {
+      this._lastCaltrop = time;
+      store.socket.emit('mine_placed', {
+        roomCode: store.playerStats.roomCode,
+        x: this.x, y: this.y,
+        isFreeze: false
+      });
+    }
   }
 }
