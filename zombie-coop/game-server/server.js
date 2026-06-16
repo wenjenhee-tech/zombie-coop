@@ -197,6 +197,93 @@ function initWave(room) {
   room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
 }
 
+// Tăng sang wave kế: reset vote, kết thúc intermission, báo client, init spawn.
+// Dùng chung bởi handler start_next_wave (legacy) và driver intermission tự động.
+function advanceWave(room, code) {
+  room.currentWave += 1;
+  room.votes = {};
+  room.voteResolved = false;
+  room.intermission = null;
+  io.to(code).emit('next_wave_started', room.currentWave);
+  initWave(room);
+}
+
+// Cho 1 người chơi chết (server-initiated). opts.afk = true → đánh dấu không hồi sinh.
+function killPlayer(room, code, player, opts = {}) {
+  player.isAlive = false;
+  player.deathTime = Date.now();
+  player.deathX = player.x;
+  player.deathY = player.y;
+  if (opts.afk) player.afkOut = true;
+  io.to(code).emit('player_died', { id: player.id, x: player.deathX, y: player.deathY });
+}
+
+// Nếu tất cả đã chết → lưu điểm + game_over + xoá room. Trả về true nếu đã kết thúc.
+function checkGameOver(room, code) {
+  const allDead = room.players.length > 0 && room.players.every(p => p.isAlive === false);
+  if (!allDead) return false;
+
+  room.status = 'finished';
+  const elapsedMs = Date.now() - (room.gameStartTime || Date.now());
+  const finishedWave = room.currentWave;
+  const playerCount = room.players.length;
+
+  Score.insertMany(room.players.map(p => ({
+    nickname: p.nickname, playerClass: p.class || 'Gunner',
+    wave: finishedWave, kills: p.kills || 0, score: p.score || 0, playerCount
+  }))).catch(err => console.error('Score save error:', err));
+
+  User.bulkWrite(room.players.map(p => ({
+    updateOne: {
+      filter: { nickname: p.nickname },
+      update: {
+        $inc: { 'stats.totalGames': 1, 'stats.totalKills': p.kills || 0, 'stats.totalScore': p.score || 0 },
+        $max: { 'stats.bestWave': finishedWave }
+      }
+    }
+  }))).catch(err => console.error('User stats update error:', err));
+
+  io.to(code).emit('game_over', {
+    wave: room.currentWave, result: 'Thua', elapsedMs,
+    players: room.players.map(p => ({
+      id: p.id, name: p.nickname, class: p.class || 'Gunner',
+      kills: p.kills || 0, score: p.score || 0, isAlive: p.isAlive
+    }))
+  });
+  delete activeRooms[code];
+  return true;
+}
+
+// Driver intermission (chạy mỗi tick cho phòng có room.intermission.active).
+// Tất cả đã chọn → đếm ngược 5s → advanceWave. Quá 60s → người chưa chọn chết (AFK).
+function handleIntermission(room, code, now) {
+  const im = room.intermission;
+  // Chỉ người CÒN SỐNG mới phải chọn (người chết-AFK đang ở spectator, bỏ qua)
+  const alive = room.players.filter(p => p.isAlive);
+  const chosenCount = alive.filter(p => p.id in im.chosen).length;
+
+  // Đủ người sống đã chọn → bắt đầu đếm ngược 5s (một lần)
+  if (alive.length > 0 && chosenCount >= alive.length && !im.countdownStart) {
+    im.countdownStart = now;
+    io.to(code).emit('wave_countdown_start', { seconds: 5 });
+  }
+
+  // Hết 5s đếm ngược → vào wave kế
+  if (im.countdownStart && now - im.countdownStart >= 5000) {
+    advanceWave(room, code);
+    return;
+  }
+
+  // Quá 60s kể từ lúc mở vote (và chưa vào đếm ngược) → người chưa chọn chết (AFK)
+  if (!im.countdownStart && now - im.startedAt >= 60000) {
+    room.players
+      .filter(p => p.isAlive && !(p.id in im.chosen))
+      .forEach(p => killPlayer(room, code, p, { afk: true }));
+    if (checkGameOver(room, code)) return; // tất cả chết → game_over, room đã xoá
+    advanceWave(room, code);
+  }
+}
+
 // Áp sát thương lên 1 zombie theo cách server-authoritative: trừ máu, cộng điểm cho
 // attacker, xử lý screamer-split khi chết, broadcast zombie_took_damage. Dùng chung bởi
 // skill_burst (và có thể tái dùng cho zombie_damaged/mìn sau này).
@@ -471,7 +558,19 @@ io.on('connection', (socket) => {
     }
   });
 
-  // POWERUP VOTING (Removed old team vote system, kept start_next_wave)
+  // POWERUP VOTING — server theo dõi ai đã chọn (intermission do server lái)
+  socket.on('powerup_chosen', ({ roomCode, buffId }) => {
+    const room = activeRooms[roomCode];
+    if (!room || !room.intermission || !room.intermission.active) return;
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+    room.intermission.chosen[socket.id] = buffId;
+    const alive = room.players.filter(p => p.isAlive);
+    io.to(roomCode).emit('powerup_progress', {
+      chosenCount: alive.filter(p => p.id in room.intermission.chosen).length,
+      total: alive.length
+    });
+  });
 
   // CLASS SKILLS RELAY
 
@@ -567,64 +666,10 @@ io.on('connection', (socket) => {
   socket.on('player_died', (data) => {
     const room = activeRooms[data.roomCode];
     if (!room) return;
-
     const player = room.players.find(p => p.id === socket.id);
-    if (player) {
-      player.isAlive = false;
-      player.deathTime = Date.now();
-      player.deathX = player.x;
-      player.deathY = player.y;
-    }
-
-    io.to(data.roomCode).emit('player_died', {
-      id: socket.id,
-      x: player?.deathX,
-      y: player?.deathY
-    });
-
-    const allDead = room.players.length > 0 && room.players.every(p => p.isAlive === false);
-    if (allDead) {
-      room.status = 'finished';
-      const elapsedMs = Date.now() - (room.gameStartTime || Date.now());
-      
-      // Lưu Score (bulk) + cập nhật lifetime stats của user trong 1 lần
-      const finishedWave = room.currentWave;
-      const playerCount = room.players.length;
-      Score.insertMany(room.players.map(p => ({
-        nickname: p.nickname,
-        playerClass: p.class || 'Gunner',
-        wave: finishedWave,
-        kills: p.kills || 0,
-        score: p.score || 0,
-        playerCount
-      }))).catch(err => console.error('Score save error:', err));
-
-      // Cập nhật users.stats (khách không khớp document nào → bỏ qua, không upsert)
-      User.bulkWrite(room.players.map(p => ({
-        updateOne: {
-          filter: { nickname: p.nickname },
-          update: {
-            $inc: { 'stats.totalGames': 1, 'stats.totalKills': p.kills || 0, 'stats.totalScore': p.score || 0 },
-            $max: { 'stats.bestWave': finishedWave }
-          }
-        }
-      }))).catch(err => console.error('User stats update error:', err));
-
-      io.to(data.roomCode).emit('game_over', {
-        wave: room.currentWave,
-        result: 'Thua',
-        elapsedMs,
-        players: room.players.map(p => ({
-          id: p.id,
-          name: p.nickname,
-          class: p.class || 'Gunner',
-          kills: p.kills || 0,
-          score: p.score || 0,
-          isAlive: p.isAlive
-        }))
-      });
-      delete activeRooms[data.roomCode];
-    }
+    if (!player) return;
+    killPlayer(room, data.roomCode, player);
+    checkGameOver(room, data.roomCode);
   });
 
   socket.on('disconnect', () => {
@@ -654,6 +699,13 @@ setInterval(() => {
   const now = Date.now();
   for (const code in activeRooms) {
     const room = activeRooms[code];
+
+    // Intermission (wave chưa active): server lái việc chọn powerup + đếm ngược + AFK
+    if (room.intermission && room.intermission.active) {
+      handleIntermission(room, code, now);
+      continue;
+    }
+
     if (room.status !== 'playing' || !room.isWaveActive) continue;
 
     // 1. Spawning Logic
@@ -859,7 +911,7 @@ setInterval(() => {
       // Auto-revive: hồi sinh người chết nếu còn ≥1 người sống
       const alivePlayers = room.players.filter(p => p.isAlive);
       if (alivePlayers.length > 0) {
-        const deadPlayers = room.players.filter(p => !p.isAlive);
+        const deadPlayers = room.players.filter(p => !p.isAlive && !p.afkOut); // afkOut: chết do AFK, không hồi sinh
         for (const dead of deadPlayers) {
           dead.isAlive = true;
           const spawnX = dead.deathX ?? 400;
@@ -933,6 +985,10 @@ setInterval(() => {
         });
         return shuffled.slice(0, 3);
       }
+
+      // Mở intermission do server lái: theo dõi ai đã chọn powerup, đếm ngược 5s
+      // khi đủ người, hoặc cho người AFK chết sau 60s.
+      room.intermission = { active: true, startedAt: Date.now(), chosen: {}, countdownStart: null };
 
       room.players.forEach(p => {
         io.to(p.id).emit('intermission_start', {

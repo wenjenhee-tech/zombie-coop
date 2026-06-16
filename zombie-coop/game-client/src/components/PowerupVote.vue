@@ -3,7 +3,7 @@
     <div class="header">
       <div class="header-text">
         <h2>Chọn power-up</h2>
-        <p>Wave {{ store.voteData.wave }} vừa kết thúc · Class: {{ store.voteData.class }} · Chọn trong <span class="highlight">{{ timeLeft }}</span>s</p>
+        <p>Wave {{ store.voteData.wave }} vừa kết thúc · Class: {{ store.voteData.class }} · <span class="highlight">Chọn 1 power-up để tiếp tục</span></p>
       </div>
       <div class="badges">
         <span class="badge blue-badge">⚡ Wave {{ store.voteData.wave }}</span>
@@ -38,54 +38,27 @@
       </div>
     </div>
 
-    <div v-if="store.pendingBuffId" class="waiting-text">
-      Đã chọn! Chờ wave tiếp theo…
-    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { computed } from 'vue';
 import { store } from '../store.js';
-
-const timeLeft = ref(15);
-let timer = null;
 
 const alivePlayers = computed(() =>
   store.teammates.filter(t => t?.isAlive).length + (store.playerStats.isAlive ? 1 : 0)
 );
 const totalPlayers = computed(() => store.teammates.length + 1);
 
-const startTimer = () => {
-  clearInterval(timer);
-  timeLeft.value = 15;
-  store.pendingBuffId = null;
-  timer = setInterval(() => {
-    timeLeft.value--;
-    if (timeLeft.value <= 0) {
-      clearInterval(timer);
-      if (store.currentRoomDetails.isHost) {
-        store.socket.emit('start_next_wave', store.currentRoomDetails.id);
-      }
-    }
-  }, 1000);
-};
-
-onMounted(() => {
-  startTimer();
-});
-
-watch(() => store.currentScreen, (screen) => {
-  if (screen === 'vote') startTimer();
-});
-
-onUnmounted(() => {
-  clearInterval(timer);
-});
-
+// Chọn xong → báo server + rời màn chọn ngay, về arena chờ đồng đội (banner trong HUD).
 const selectCard = (option) => {
-  if (store.pendingBuffId) return; // already picked
+  if (store.pendingBuffId) return; // đã chọn rồi
   store.pendingBuffId = option.id;
+  store.socket.emit('powerup_chosen', {
+    roomCode: store.currentRoomDetails.id,
+    buffId: option.id,
+  });
+  store.setScreen('game');
 };
 
 const getIcon = (tier) => {

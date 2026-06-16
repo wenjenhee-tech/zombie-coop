@@ -29,6 +29,14 @@ export const store = reactive({
   
   pendingBuffId: null,
 
+  // Trạng thái intermission (chờ chọn powerup giữa các wave) — server lái
+  intermission: {
+    active: false,
+    chosenCount: 0,
+    total: 0,
+    countdownSeconds: null, // null = chưa đếm ngược; số = giây còn lại tới wave kế
+  },
+
   voteData: {
     wave: 1,
     class: 'Gunner',

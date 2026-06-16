@@ -2,6 +2,18 @@
   <div class="game-wrapper">
     <div id="phaser-container"></div>
 
+    <!-- Banner intermission: đã chọn xong, (chờ đồng đội nếu nhiều người) + đếm ngược 5s -->
+    <div v-if="store.intermission.active" class="intermission-banner">
+      <template v-if="store.intermission.total > 1">
+        <span class="im-label">⏳ Chờ đồng đội chọn power-up</span>
+        <span class="im-count">{{ store.intermission.chosenCount }}/{{ store.intermission.total }}</span>
+      </template>
+      <span v-else class="im-label">✓ Đã chọn power-up</span>
+      <span v-if="store.intermission.countdownSeconds != null" class="im-countdown">
+        · Wave kế trong <strong>{{ store.intermission.countdownSeconds }}s</strong>
+      </span>
+    </div>
+
     <!-- HUD Overlay -->
     <div class="hud-overlay">
       <div class="hud-bottom">
@@ -162,6 +174,37 @@ onUnmounted(() => {
 :deep(canvas) {
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
 }
+
+/* ── Banner intermission (chờ đồng đội chọn powerup) ── */
+.intermission-banner {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: rgba(10, 14, 26, 0.88);
+  border: 1px solid #2196f3;
+  border-radius: 8px;
+  color: #e8eef7;
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: 0 0 16px rgba(33, 150, 243, 0.35);
+  pointer-events: none;
+  z-index: 20;
+}
+.im-count {
+  background: #2196f3;
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.im-countdown { color: #9ad; }
+.im-countdown strong { color: #4fc3f7; }
 
 .hud-overlay {
   position: absolute;

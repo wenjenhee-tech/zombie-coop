@@ -149,7 +149,8 @@ export default class GameScene extends Phaser.Scene {
       'zombie_took_damage', 'heal_aoe', 'shield_wall_active', 'taunt_active',
       'intermission_start', 'next_wave_started', 'difficulty_update',
       'you_are_host', 'player_revived', 'mine_placed', 'mine_exploded',
-      'exploder_exploded', 'player_died', 'skill_burst_fx', 'team_stim'
+      'exploder_exploded', 'player_died', 'skill_burst_fx', 'team_stim',
+      'powerup_progress', 'wave_countdown_start'
     ];
     events.forEach(e => store.socket.off(e));
 
@@ -165,6 +166,11 @@ export default class GameScene extends Phaser.Scene {
         this.otherPlayers.add(other);
       }
       other.setPosition(data.x, data.y);
+      // Tự chữa lành desync: chỉ player CÒN SỐNG mới gửi player_move (player chết
+      // ngừng emit do this.player.active=false). Nên nếu nhận được move mà sprite
+      // đang bị ẩn (vì player_died trước đó thiếu player_revived khớp — reconnect
+      // đổi socket.id, mất gói...), hiện lại để khỏi "vô hình nhưng vẫn bắn".
+      if (!other.visible) other.setVisible(true);
 
       // Play walk animation based on velocity
       const { velocityX: vx, velocityY: vy } = data;
@@ -293,20 +299,41 @@ export default class GameScene extends Phaser.Scene {
       store.voteData.class = store.playerStats.class;
       store.voteData.winner = null;
       if (data?.options) store.voteData.options = data.options;
+      store.pendingBuffId = null;
+      // Reset trạng thái intermission cho banner "chờ đồng đội"
+      store.intermission.active = true;
+      store.intermission.chosenCount = 0;
+      store.intermission.total = store.teammates.filter(t => t?.isAlive).length + (store.playerStats.isAlive ? 1 : 0);
+      store.intermission.countdownSeconds = null;
+      this._clearWaveCountdown();
       store.setScreen('vote');
+    });
+
+    // Cập nhật bảng "x/y đã chọn" trên banner
+    store.socket.on('powerup_progress', (data) => {
+      store.intermission.chosenCount = data.chosenCount;
+      store.intermission.total = data.total;
+    });
+
+    // Đủ người chọn → server báo đếm ngược 5s tới wave kế
+    store.socket.on('wave_countdown_start', (data) => {
+      this._startWaveCountdown(data?.seconds ?? 5);
     });
 
     store.socket.on('next_wave_started', (wave) => {
       this.currentWave = wave;
       this.isWaveActive = true;
       this.waveText.setText(`Wave: ${wave}`);
-      
+
       const picked = store.pendingBuffId;
       if (picked) {
         const opt = store.voteData.options.find(o => o.id === picked);
         if (opt) this.player.addBuff(opt.name);
         store.pendingBuffId = null;
       }
+      store.intermission.active = false;
+      store.intermission.countdownSeconds = null;
+      this._clearWaveCountdown();
       store.setScreen('game');
     });
 
@@ -393,7 +420,35 @@ export default class GameScene extends Phaser.Scene {
     store.socket.on('player_died', (data) => {
       const other = this.otherPlayers.getChildren().find(p => p.id === data.id);
       if (other) other.setVisible(false);
+
+      // Server cho CHÍNH MÌNH chết (vd AFK quá 60s không chọn powerup) → vào spectator.
+      // Không emit lại player_died (server đã khởi xướng).
+      if (data.id === store.socket.id && store.playerStats.isAlive) {
+        store.playerStats.isAlive = false;
+        store.intermission.active = false;
+        store.intermission.countdownSeconds = null;
+        this._clearWaveCountdown();
+        this.cameras.main.stopFollow();
+        store.setScreen('spectator');
+      }
     });
+  }
+
+  // ── Đếm ngược 5s (cục bộ, hiển thị banner) ──
+  _startWaveCountdown(seconds) {
+    this._clearWaveCountdown();
+    store.intermission.countdownSeconds = seconds;
+    this._cdTimer = setInterval(() => {
+      if (store.intermission.countdownSeconds > 0) {
+        store.intermission.countdownSeconds -= 1;
+      } else {
+        this._clearWaveCountdown();
+      }
+    }, 1000);
+  }
+
+  _clearWaveCountdown() {
+    if (this._cdTimer) { clearInterval(this._cdTimer); this._cdTimer = null; }
   }
 
   addObstacles(wallData) {
