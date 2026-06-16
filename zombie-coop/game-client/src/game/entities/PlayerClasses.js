@@ -28,11 +28,18 @@ export class Gunner extends Player {
   _redrawWeapon() {
     const g = this.weaponGraphics;
     g.clear();
-    const isActive = this.hasBuff('Rain_Of_Bullets');
-    g.fillStyle(isActive ? 0x1a8ad0 : 0x1a5276, 1);
-    g.fillRect(10, -3, 14, 6);
-    g.fillStyle(isActive ? 0x0e6090 : 0x0e2f44, 1);
-    g.fillRect(22, -4, 4, 8);
+    const on = this.hasBuff('Rain_Of_Bullets');
+    const body = on ? 0x2a4a6a : 0x1c2c3c;
+    const steel = on ? 0x3a6fa0 : 0x24465f;
+    const acc = on ? 0x46c8ff : 0x2a93d8;
+    // súng trường: báng + thân + hộp đạn + nòng dài + điểm ruồi xanh
+    g.fillStyle(0x12100d, 1); g.fillRect(-3, -2, 6, 4);
+    g.fillStyle(body, 1);     g.fillRect(0, -2.5, 22, 5);
+    g.fillStyle(steel, 1);    g.fillRect(9, 2, 5, 7);
+    g.fillStyle(steel, 1);    g.fillRect(22, -1.5, 12, 3);
+    g.fillStyle(acc, 1);      g.fillRect(6, -3.5, 9, 1.5);
+    this._drawHands(g, 24);
+    this._drawMuzzle(g, 34);
   }
 
   usePrimarySkill() {
@@ -110,10 +117,15 @@ export class Tank extends Player {
   _redrawWeapon() {
     const g = this.weaponGraphics;
     g.clear();
-    g.fillStyle(0x7b241c, 1);
-    g.fillRect(10, -5, 10, 10); // thick short barrel
-    g.fillStyle(0x4a120c, 1);
-    g.fillRect(18, -6, 4, 12);
+    // shotgun nòng đôi: báng gỗ + 2 nòng song song + band đỏ
+    g.fillStyle(0x3a2416, 1); g.fillRect(-4, -3, 8, 6);     // báng gỗ
+    g.fillStyle(0x6a1f17, 1);
+    g.fillRect(4, -4.5, 22, 3.5);                            // nòng trên
+    g.fillRect(4, 1, 22, 3.5);                               // nòng dưới
+    g.fillStyle(0x3a120c, 1); g.fillRect(24, -4.5, 3, 9.5);  // miệng nòng
+    g.fillStyle(0xc0392b, 1); g.fillRect(8, -1, 12, 2);      // band đỏ
+    this._drawHands(g, 20, 0x2a1a12);
+    this._drawMuzzle(g, 27);
   }
 
   usePrimarySkill() {
@@ -190,13 +202,14 @@ export class Medic extends Player {
   _redrawWeapon() {
     const g = this.weaponGraphics;
     g.clear();
-    // Syringe
-    g.fillStyle(0x1d8348, 1);
-    g.fillRect(10, -2, 13, 4);
-    g.fillStyle(0xabebc6, 1);
-    g.fillRect(10, -2, 4, 4); // plunger end
-    g.fillStyle(0xabebc6, 0.7);
-    g.fillRect(20, -1, 5, 2); // needle
+    // súng ngắn (pistol) accent lục y tế: thân + báng chúc + nòng + điểm ngắm lục
+    g.fillStyle(0x222a25, 1); g.fillRect(2, -2.5, 13, 5);   // thân
+    g.fillStyle(0x161c18, 1); g.fillRect(3, 2, 4, 7);       // báng cầm
+    g.fillStyle(0x33403a, 1); g.fillRect(15, -1.5, 6, 3);   // nòng
+    g.fillStyle(0x2ecc71, 1); g.fillRect(5, -3.5, 5, 1.5);  // điểm ngắm lục
+    g.fillStyle(0x2ecc71, 1); g.fillCircle(11, 0, 1.4);     // chấm lục
+    this._drawHands(g, 13, 0x1d3a2a);                        // 2 tay cụp gần
+    this._drawMuzzle(g, 21);
   }
 
   usePrimarySkill() {
@@ -271,12 +284,15 @@ export class Trapper extends Player {
   _redrawWeapon() {
     const g = this.weaponGraphics;
     g.clear();
-    g.fillStyle(0x7d6608, 1);
-    g.fillRect(10, -2, 12, 4);
-    // Trap crosshair at muzzle
-    g.lineStyle(1.5, 0xf39c12, 1);
-    g.lineBetween(24, -4, 28, 0);
-    g.lineBetween(28, 0, 24, 4);
+    // nỏ: rail thân + cánh nỏ (thanh dọc) + dây cung + mũi bolt cam
+    g.fillStyle(0x4a3a14, 1); g.fillRect(-2, -2, 20, 4);    // rail/thân
+    g.lineStyle(2.5, 0x6a4a18, 1); g.lineBetween(14, -8, 14, 8); // cánh nỏ
+    g.lineStyle(1, 0xccb98a, 1);
+    g.lineBetween(14, -8, 4, 0); g.lineBetween(14, 8, 4, 0);     // dây cung
+    g.fillStyle(0xe67e22, 1); g.fillRect(4, -1, 22, 2);          // thân bolt
+    g.fillStyle(0xf39c12, 1); g.fillTriangle(26, -2.5, 26, 2.5, 31, 0); // đầu mũi
+    this._drawHands(g, 16, 0x3a2810);
+    this._drawMuzzle(g, 31);
   }
 
   usePrimarySkill() {

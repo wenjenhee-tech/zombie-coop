@@ -40,6 +40,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     // Weapon graphics layer (rotates toward mouse, drawn on top)
     this.weaponGraphics = scene.add.graphics();
+    this._recoil = 0;        // độ giật nòng hiện tại (px), hồi dần về 0
+    this._muzzleUntil = 0;   // thời điểm tắt chớp lửa đầu nòng
     this._redrawWeapon();
 
     // Setup input
@@ -62,15 +64,37 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.tertiaryCooldown  = 5000;
   }
 
-  // Subclasses override to draw their weapon shape
+  // Subclasses override to draw their weapon shape (forward = +x). Mỗi hàm nên
+  // gọi this._drawHands(g, foreX) + this._drawMuzzle(g, tipX) ở cuối.
   _redrawWeapon() {
     const g = this.weaponGraphics;
     g.clear();
-    // Default barrel (forward = right)
-    g.fillStyle(0x444444, 1);
-    g.fillRect(10, -3, 14, 6);
-    g.fillStyle(0x222222, 1);
-    g.fillRect(22, -4, 4, 8);
+    g.fillStyle(0x444444, 1); g.fillRect(0, -2.5, 22, 5);
+    g.fillStyle(0x222222, 1); g.fillRect(22, -1.5, 12, 3);
+    this._drawHands(g, 24);
+    this._drawMuzzle(g, 34);
+  }
+
+  // Gọi từ GameScene.shoot() khi player bắn — kích recoil + chớp lửa đầu nòng.
+  fireFx() {
+    this._recoil = 5;
+    this._muzzleUntil = this.scene.time.now + 55;
+  }
+
+  // 2 bàn tay nắm súng: tay cò (sau) + tay trước giữ nòng — đốm tròn viền tối.
+  _drawHands(g, foreX, glove = 0x23201b) {
+    g.fillStyle(0x100d0a, 1);
+    g.fillCircle(4, 2.5, 3.6); g.fillCircle(foreX, 0, 3.6);
+    g.fillStyle(glove, 1);
+    g.fillCircle(4, 2.5, 2.5); g.fillCircle(foreX, 0, 2.5);
+  }
+
+  // Chớp lửa đầu nòng — chỉ hiện vài frame ngay sau khi bắn.
+  _drawMuzzle(g, tipX) {
+    if (this.scene.time.now >= this._muzzleUntil) return;
+    g.fillStyle(0xfff3b0, 1);  g.fillCircle(tipX + 2, 0, 4.5);
+    g.fillStyle(0xffc23a, 0.9); g.fillCircle(tipX + 6, 0, 2.8);
+    g.fillStyle(0xff7a1e, 0.75); g.fillTriangle(tipX, -3.5, tipX, 3.5, tipX + 13, 0);
   }
 
   update(time, delta) {
@@ -138,9 +162,14 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   handleRotation() {
     const pointer = this.scene.input.activePointer;
     const angle = Phaser.Math.Angle.Between(this.x, this.y, pointer.worldX, pointer.worldY);
+    // Recoil: nòng giật lùi theo hướng ngắm rồi hồi dần
+    this._recoil = this._recoil > 0.3 ? this._recoil * 0.7 : 0;
+    const rc = this._recoil;
     // Body does NOT rotate — only weapon layer tracks the mouse
-    this.weaponGraphics.setPosition(this.x, this.y);
+    this.weaponGraphics.setPosition(this.x - Math.cos(angle) * rc, this.y - Math.sin(angle) * rc);
     this.weaponGraphics.setRotation(angle);
+    // Ngắm sang trái → lật dọc để súng không bị lộn ngược (4 hướng hợp lý)
+    this.weaponGraphics.scaleY = Math.abs(angle) > Math.PI / 2 ? -1 : 1;
     this._redrawWeapon();
   }
 

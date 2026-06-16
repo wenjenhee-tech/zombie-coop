@@ -718,6 +718,7 @@ export default class GameScene extends Phaser.Scene {
       if (!store.isMuted && this.cache.audio.exists('gunshot')) {
         this.sound.play('gunshot', { volume: 0.3, detune: Phaser.Math.Between(-120, 120) });
       }
+      this.player.fireFx(); // recoil + chớp lửa đầu nòng
 
       // Auto destroy bullet after 2 seconds
       this.time.delayedCall(2000, () => {
