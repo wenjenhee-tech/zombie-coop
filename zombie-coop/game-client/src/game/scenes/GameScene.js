@@ -10,9 +10,10 @@ export default class GameScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.audio('shoot', '/audio/sfx/shoot.mp3');
-    this.load.audio('zombie_die', '/audio/sfx/zombie.mp3');
-    this.load.audio('zombie_hit', '/audio/sfx/zombie.wav');
+    this.load.audio('gunshot', '/audio/sfx/gunshot.wav');
+    this.load.audio('zombie_growl', '/audio/sfx/zombie_growl.wav'); // ambient gầm
+    this.load.audio('zombie_hit', '/audio/sfx/zombie_hit.wav');     // grunt ngắn (lát growl)
+    this.load.audio('zombie_die', '/audio/sfx/zombie_die.wav');     // groan (lát growl)
   }
 
   create() {
@@ -193,6 +194,8 @@ export default class GameScene extends Phaser.Scene {
       const vx = Math.cos(data.angle) * 600;
       const vy = Math.sin(data.angle) * 600;
       this.tweens.add({ targets: b, x: data.x + vx, y: data.y + vy, duration: 1000, onComplete: () => b.destroy() });
+      // Tiếng súng đồng đội — nhỏ dần theo khoảng cách
+      this.playSpatial('gunshot', data.x, data.y, 0.26, 120);
     });
 
     store.socket.on('zombie_spawned', (data) => {
@@ -225,14 +228,12 @@ export default class GameScene extends Phaser.Scene {
         
         // Rate-limit để tránh spam âm thanh khi nhiều người bắn cùng lúc
         if (this.time.now > (this._lastHitSfx || 0) + 80) {
-          if (this.cache.audio.exists('zombie_hit')) {
-            this.sound.play('zombie_hit', { volume: 0.12, detune: Phaser.Math.Between(-300, 300) });
-          }
+          this.playSpatial('zombie_hit', zombie.x, zombie.y, 0.35, 250, 300); // grunt cao
           this._lastHitSfx = this.time.now;
         }
 
         if (!zombie.active) {
-          if (this.cache.audio.exists('zombie_die')) this.sound.play('zombie_die', { volume: 0.4 });
+          this.playSpatial('zombie_die', zombie.x, zombie.y, 0.6, 120, -250); // groan trầm
           store.playerStats.kills++;
           store.playerStats.score += zombie.maxHp * 2;
           store.remainingZombies = this.zombies.getChildren().filter(z => z.active).length;
@@ -432,6 +433,32 @@ export default class GameScene extends Phaser.Scene {
         store.setScreen('spectator');
       }
     });
+  }
+
+  // ── Phát âm thanh theo vị trí: nhỏ dần theo khoảng cách tới player, quá xa thì bỏ.
+  // detuneBase dịch cao độ cố định (hit cao / die thấp), detuneRange thêm ngẫu nhiên.
+  playSpatial(key, x, y, baseVol, detuneRange = 0, detuneBase = 0) {
+    if (store.isMuted || !this.player || !this.cache.audio.exists(key)) return;
+    const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y);
+    const vol = baseVol * Math.max(0, 1 - dist / 850);
+    if (vol < 0.02) return; // quá xa, không nghe được → bỏ (đỡ tốn voice)
+    const detune = detuneBase + (detuneRange ? Phaser.Math.Between(-detuneRange, detuneRange) : 0);
+    this.sound.play(key, { volume: vol, detune });
+  }
+
+  // ── Tiếng gầm ambient: định kỳ ~3s, chọn zombie sống GẦN NHẤT trong tầm nghe ──
+  _ambientGrowl(time) {
+    if (time < (this._lastGrowl || 0)) return;
+    const zs = this.zombies.getChildren().filter(z => z.active);
+    if (zs.length) {
+      let nearest = null, nd = Infinity;
+      for (const z of zs) {
+        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, z.x, z.y);
+        if (d < nd) { nd = d; nearest = z; }
+      }
+      if (nearest && nd < 850) this.playSpatial('zombie_growl', nearest.x, nearest.y, 0.3, 200);
+    }
+    this._lastGrowl = time + Phaser.Math.Between(2800, 4200);
   }
 
   // ── Đếm ngược 5s (cục bộ, hiển thị banner) ──
@@ -687,9 +714,9 @@ export default class GameScene extends Phaser.Scene {
       bullet.rotation = angle;
       bullet.damage = this.player.damage;
 
-      // Play SFX
-      if (this.cache.audio.exists('shoot')) {
-        this.sound.play('shoot', { volume: 0.25, detune: Phaser.Math.Between(-100, 100) });
+      // Play SFX — súng của chính mình (luôn gần → full volume)
+      if (!store.isMuted && this.cache.audio.exists('gunshot')) {
+        this.sound.play('gunshot', { volume: 0.3, detune: Phaser.Math.Between(-120, 120) });
       }
 
       // Auto destroy bullet after 2 seconds
@@ -778,6 +805,9 @@ export default class GameScene extends Phaser.Scene {
       if (!zombie.active) return;
       zombie.update(time, delta);
     });
+
+    // Tiếng gầm ambient khi đang trong wave (chỉ khi còn sống)
+    if (this.player && this.player.active && this.isWaveActive) this._ambientGrowl(time);
 
     // Spectator camera: follow the selected teammate
     if (!store.playerStats.isAlive) {
