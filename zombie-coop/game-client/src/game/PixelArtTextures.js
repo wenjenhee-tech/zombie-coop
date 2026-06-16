@@ -649,26 +649,45 @@ const SC = {
   MAW: '#2a0e0e', EYE: '#fff04a', EYE_GLOW: '#ffe000'
 };
 function drawScreamer(ctx, frame) {
-  const wf = frame % 2, pulse = wf === 0 ? 0 : 2;
-  const cx = 24, cy = 24;
-  ctx.lineWidth = 1.5;
-  [13, 18, 23].forEach((r, i) => {                           // sóng âm lan
-    ctx.strokeStyle = `rgba(255,240,120,${0.5 - i * 0.15})`;
-    ctx.beginPath(); ctx.arc(cx, cy, r + pulse, 0, Math.PI * 2); ctx.stroke();
+  const wf = frame % 2, pulse = wf === 0 ? 0 : 2.5;
+  const cx = 24;
+
+  // sóng âm phát ra từ miệng, lan dữ dội (pulse)
+  ctx.lineWidth = 2;
+  [9, 15, 21].forEach((r, i) => {
+    ctx.strokeStyle = `rgba(255,236,90,${0.6 - i * 0.17})`;
+    ctx.beginPath(); ctx.arc(cx, 16, r + pulse, -Math.PI * 0.8, Math.PI * 0.8); ctx.stroke();
   });
-  fc(ctx, cx, cy, 12, SC.OL);
-  fc(ctx, cx, cy - 1, 11, SC.SKIN);
-  fc(ctx, cx - 3, cy - 4, 3, SC.SKIN_HI);
-  fr(ctx, cx - 11, cy - 1, 3, 6, SC.SKIN_DK);                // má hóp
-  fr(ctx, cx + 8, cy - 1, 3, 6, SC.SKIN_DK);
-  ctx.fillStyle = SC.MAW;                                    // miệng gào khổng lồ
-  ctx.beginPath(); ctx.ellipse(cx, cy + 5, 5, 7 + pulse, 0, 0, Math.PI * 2); ctx.fill();
-  for (let i = 0; i < 4; i++) {                              // răng lởm chởm
-    fr(ctx, cx - 4 + i * 2.5, cy + 1, 1, 2, SC.SKIN_HI);
-    fr(ctx, cx - 4 + i * 2.5, cy + 9, 1, 2, SC.SKIN_HI);
+
+  // thân gầy guộc, lồng sườn lộ
+  grect(ctx, 18, 28, 12, 13, SC.SKIN, SC.SKIN_DK);
+  [31, 34, 37].forEach(y => fr(ctx, 19, y, 10, 1.4, SC.SKIN_DK));
+  grect(ctx, 17, 39, 5, 6, SC.SKIN, SC.SKIN_DK);             // chân khẳng khiu
+  grect(ctx, 26, 39, 5, 6, SC.SKIN, SC.SKIN_DK);
+
+  // tay gầy giơ lên ôm hai bên đầu (tư thế gào điên loạn)
+  ctx.strokeStyle = SC.SKIN; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(19, 29); ctx.lineTo(12, 20); ctx.lineTo(15, 11); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(29, 29); ctx.lineTo(36, 20); ctx.lineTo(33, 11); ctx.stroke();
+
+  // đầu ngửa ra sau gào thét
+  fc(ctx, cx, 15, 11, SC.OL);
+  fc(ctx, cx, 14, 10, SC.SKIN);
+  fc(ctx, cx - 3, 10, 3, SC.SKIN_HI);
+  fr(ctx, cx - 11, 13, 3, 5, SC.SKIN_DK);                    // má hóp
+  fr(ctx, cx + 8, 13, 3, 5, SC.SKIN_DK);
+
+  // MIỆNG gào khổng lồ chạy dọc (sun/giãn theo nhịp)
+  ctx.fillStyle = SC.MAW;
+  ctx.beginPath(); ctx.ellipse(cx, 17, 4.5, 8 + pulse, 0, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 4; i++) {                              // răng lởm chởm hai hàm
+    fr(ctx, cx - 3.5 + i * 2.3, 10, 1, 2.4, SC.SKIN_HI);
+    fr(ctx, cx - 3.5 + i * 2.3, 22, 1, 2.4, SC.SKIN_HI);
   }
-  glow(ctx, SC.EYE_GLOW, 5, () => { fc(ctx, cx - 5, cy - 4, 2.6, SC.EYE); fc(ctx, cx + 5, cy - 4, 2.6, SC.EYE); });
-  fc(ctx, cx - 5, cy - 4, 1.2, SC.OL); fc(ctx, cx + 5, cy - 4, 1.2, SC.OL);
+
+  // mắt hốc trống cháy sáng
+  glow(ctx, SC.EYE_GLOW, 6, () => { fc(ctx, cx - 6, 10, 2.4, SC.EYE); fc(ctx, cx + 6, 10, 2.4, SC.EYE); });
+  fc(ctx, cx - 6, 10, 1, SC.OL); fc(ctx, cx + 6, 10, 1, SC.OL);
 }
 
 // ─── EXPLODER — 48px xác phồng sắp nổ (mụn rộp, nứt phát sáng đập theo nhịp) ──────
@@ -678,21 +697,41 @@ const EX = {
   CRACK: '#ff7a2e', CRACK_GLOW: '#ffb24a', BLISTER: '#b46ad0', PUS: '#d89af0', EYE: '#ff5a2e'
 };
 function drawExploder(ctx, frame) {
-  const wf = frame % 2, p = wf === 0 ? 0 : 2;
-  const cx = 24, cy = 26;
-  fc(ctx, cx, cy, 19, EX.OL);
-  gcircle(ctx, cx, cy, 18, EX.SKIN_HI, EX.SKIN);             // thân phồng to
-  fc(ctx, 14, 22, 4, EX.BLISTER); fc(ctx, 34, 24, 5, EX.BLISTER); fc(ctx, 26, 36, 4, EX.BLISTER);
-  fc(ctx, 14, 21, 1.6, EX.PUS); fc(ctx, 34, 23, 2, EX.PUS);  // mụn rộp
-  glow(ctx, EX.CRACK_GLOW, 4 + p, () => {                    // nứt phát sáng đập nhịp
-    ctx.strokeStyle = EX.CRACK; ctx.lineWidth = 1.5 + (p ? 0.8 : 0);
-    ctx.beginPath(); ctx.moveTo(16, 18); ctx.lineTo(22, 26); ctx.lineTo(18, 34); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(32, 16); ctx.lineTo(28, 26); ctx.lineTo(33, 34); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(22, 26); ctx.lineTo(30, 28); ctx.stroke();
+  const wf = frame % 2, p = wf === 0 ? 0 : 2.5;
+  const cx = 24, cy = 27;
+
+  // hơi nóng rò rỉ — quầng sáng đập theo nhịp (sắp nổ)
+  glow(ctx, EX.CRACK_GLOW, 9 + p * 2, () => fc(ctx, cx, cy, 3, EX.CRACK_GLOW));
+
+  grect(ctx, 16, 41, 6, 6, EX.SKIN, EX.SKIN_DK);             // chân ngắn ngủn
+  grect(ctx, 26, 41, 6, 6, EX.SKIN, EX.SKIN_DK);
+
+  fc(ctx, cx, cy, 19, EX.OL);                                // thân phồng khổng lồ
+  gcircle(ctx, cx, cy, 18, EX.SKIN_HI, EX.SKIN);
+
+  grect(ctx, 3, 26, 7, 5, EX.SKIN, EX.SKIN_DK);              // tay bé tí giơ ngang
+  grect(ctx, 38, 26, 7, 5, EX.SKIN, EX.SKIN_DK);
+
+  // mụn rộp căng phồng
+  fc(ctx, 13, 22, 4, EX.BLISTER); fc(ctx, 35, 25, 5, EX.BLISTER);
+  fc(ctx, 18, 38, 4, EX.BLISTER); fc(ctx, 31, 37, 3.5, EX.BLISTER);
+  fc(ctx, 13, 21, 1.6, EX.PUS); fc(ctx, 35, 24, 2, EX.PUS); fc(ctx, 18, 37, 1.5, EX.PUS);
+
+  // mạng nứt phát sáng TỎA RA từ lõi (đập theo nhịp)
+  glow(ctx, EX.CRACK_GLOW, 4 + p, () => {
+    ctx.strokeStyle = EX.CRACK; ctx.lineWidth = 1.5 + (p ? 1 : 0); ctx.lineCap = 'round';
+    [[14, 13], [34, 14], [10, 31], [39, 30], [20, 41], [32, 40]].forEach(([x1, y1]) => {
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x1, y1); ctx.stroke();
+    });
   });
-  fc(ctx, cx, 13, 7, EX.SKIN_DK);                            // đầu thụt nhỏ
-  fr(ctx, cx - 4, 14, 8, 2, EX.OL);                          // nhăn nhó
-  glow(ctx, EX.EYE, 4, () => { fc(ctx, cx - 3, 12, 1.8, EX.EYE); fc(ctx, cx + 3, 12, 1.8, EX.EYE); });
+
+  // LÕI nóng chảy lộ qua da nứt — tâm điểm vụ nổ
+  glow(ctx, EX.CRACK_GLOW, 6 + p * 2, () => gcircle(ctx, cx, cy, 6 + p, EX.CRACK_GLOW, EX.CRACK));
+
+  // đầu thụt bé nhăn nhó trên đỉnh
+  fc(ctx, cx, 12, 6, EX.SKIN_DK);
+  fr(ctx, cx - 4, 13, 8, 2, EX.OL);
+  glow(ctx, EX.EYE, 4, () => { fc(ctx, cx - 3, 11, 1.8, EX.EYE); fc(ctx, cx + 3, 11, 1.8, EX.EYE); });
 }
 
 // ─── HORDEKING — 48px BOSS: vua zombie hắc ám, vương miện vàng, mắt đỏ rực ────────
