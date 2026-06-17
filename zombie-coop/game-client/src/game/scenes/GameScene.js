@@ -156,6 +156,7 @@ export default class GameScene extends Phaser.Scene {
       'intermission_start', 'next_wave_started', 'difficulty_update',
       'you_are_host', 'player_revived', 'mine_placed', 'mine_exploded',
       'exploder_exploded', 'player_died', 'skill_burst_fx', 'debuff_zone_fx', 'team_stim',
+      'turret_spawned', 'turret_fired', 'turret_removed', 'pylon_active',
       'powerup_progress', 'wave_countdown_start'
     ];
     events.forEach(e => store.socket.off(e));
@@ -327,6 +328,9 @@ export default class GameScene extends Phaser.Scene {
     store.socket.on('intermission_start', (data) => {
       this.isWaveActive = false;
       this.zombies.clear(true, true);
+      // Súng Máy không bắc cầu qua wave (server reset room.turrets ở initWave)
+      for (const id in this.turretSprites) this.turretSprites[id].destroy();
+      this.turretSprites = {};
       store.remainingZombies = 0;
       store.voteData.wave = this.currentWave;
       store.voteData.class = store.playerStats.class;
@@ -403,6 +407,7 @@ export default class GameScene extends Phaser.Scene {
 
     // Mine visuals (server-driven)
     this.mineSprites = this.mineSprites || {};
+    this.turretSprites = this.turretSprites || {};
     store.socket.on('mine_placed', ({ mineId, x, y, isFreeze }) => {
       const g = this.add.graphics({ x, y });
       g.fillStyle(isFreeze ? 0x00ffff : 0xf39c12, 1);
@@ -429,6 +434,40 @@ export default class GameScene extends Phaser.Scene {
       ring.fillCircle(x, y, radius);
       this.time.delayedCall(250, () => ring.destroy());
       if (!isFreeze) this._shakeAt(x, y, 0.016, 500); // mìn nổ rung, mìn băng thì không
+    });
+
+    // Súng Máy (Engineer) — server làm chủ bắn; client chỉ dựng hình + vẽ tia bắn.
+    store.socket.on('turret_spawned', ({ turretId, x, y }) => {
+      const g = this.add.graphics({ x, y }).setDepth(8);
+      g.fillStyle(0x2c3e50, 1); g.fillCircle(0, 0, 11);          // bệ
+      g.lineStyle(2, 0xf39c12, 1); g.strokeCircle(0, 0, 11);     // viền cam
+      g.fillStyle(0x7f8c8d, 1); g.fillRect(-3, -3, 18, 6);        // nòng
+      g.fillStyle(0xf39c12, 1); g.fillCircle(0, 0, 3);            // lõi
+      this.turretSprites[turretId] = g;
+    });
+
+    store.socket.on('turret_fired', ({ turretId, x, y, tx, ty }) => {
+      const g = this.turretSprites[turretId];
+      if (g) g.setRotation(Phaser.Math.Angle.Between(x, y, tx, ty)); // nòng quay theo mục tiêu
+      const tracer = this.add.graphics().setDepth(9);
+      tracer.lineStyle(2, 0xffe066, 0.9); tracer.lineBetween(x, y, tx, ty);
+      this.time.delayedCall(60, () => tracer.destroy());
+      this.playSpatial('gunshot', x, y, 0.16, 140);
+    });
+
+    store.socket.on('turret_removed', ({ turretId }) => {
+      const g = this.turretSprites[turretId];
+      if (g) { g.destroy(); delete this.turretSprites[turretId]; }
+    });
+
+    // Tháp Khuếch Đại (Engineer) — pylon buff tốc bắn: nếu player trong vùng thì +Overcharge.
+    store.socket.on('pylon_active', ({ x, y, radius, duration }) => {
+      if (!this.player || !this.player.active) return;
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y) > radius) return;
+      this.player.addBuff('Overcharge');
+      this.time.delayedCall(duration, () => {
+        if (this.player?.activeBuffs) this.player.removeBuff('Overcharge');
+      });
     });
 
     // Exploder nổ server-side: render visual + áp damage nếu player trong vùng nổ
@@ -794,7 +833,7 @@ export default class GameScene extends Phaser.Scene {
         isFireAmmo: this.player.hasBuff('Fire Ammo')
       });
 
-      this.lastFired = this.time.now + this.player.fireRate;
+      this.lastFired = this.time.now + this.player.fireRate * (1 - this.player.getBuffValue('Overcharge'));
     }
   }
 
@@ -837,7 +876,7 @@ export default class GameScene extends Phaser.Scene {
         this.sound.play('zombie_hit', { volume: 0.22, detune: Phaser.Math.Between(-100, 100) });
       }
     }
-    this.lastFired = this.time.now + p.meleeRate;
+    this.lastFired = this.time.now + p.meleeRate * (1 - p.getBuffValue('Overcharge'));
   }
 
   // Vệt chém hình cung (local-only visual) — nở nhẹ rồi tan.

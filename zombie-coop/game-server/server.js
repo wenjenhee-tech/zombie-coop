@@ -111,6 +111,17 @@ const DIRECTOR = {
 };
 const SPAWN_LULL_MS = 3500;          // nghỉ ngắn giữa các đợt trong 1 wave
 
+// Súng Máy (Engineer Q) — host-authority, server làm chủ bắn/HP/lifetime.
+const TURRET = {
+  LIFETIME: 18000,  // ms tồn tại
+  HP: 150,          // máu (zombie cận kề bào mòn)
+  RANGE: 300,       // tầm bắn
+  DAMAGE: 18,       // sát thương/phát
+  INTERVAL: 600,    // ms giữa 2 phát (18/0.6s = 30 DPS, khớp balance-sim)
+  CAP: 2,           // tối đa / chủ sở hữu
+  ATTACK_RADIUS: 32 // zombie trong bán kính này bào HP turret
+};
+
 // Map Templates — bản đồ có cấu trúc chiến thuật
 function generateMapLayout() {
   const MAP = 1600;
@@ -242,6 +253,7 @@ function initWave(room) {
   room.spawnedInBurst = 0;
   room.lullUntil = 0;
   room.zombies = {};
+  room.turrets = {}; // Súng Máy không bắc cầu qua wave
   room.lastSpawnTime = Date.now();
   room.waveStartTime = Date.now();
   room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
@@ -740,6 +752,40 @@ io.on('connection', (socket) => {
     });
   });
 
+  // "Dựng Súng Máy" (Engineer Q) — turret host-authority: server tự bắn/đếm HP/lifetime.
+  socket.on('place_turret', (data) => {
+    // data: { roomCode, x, y }
+    const room = activeRooms[data.roomCode];
+    if (!room) return;
+    const sender = room.players.find(p => p.id === socket.id);
+    if (!sender || (sender.class || '').toLowerCase() !== 'engineer') return;
+    if (!room.turrets) room.turrets = {};
+    // Trần CAP/chủ sở hữu: quá thì gỡ cái cũ nhất
+    const mine = Object.values(room.turrets).filter(t => t.ownerId === socket.id);
+    if (mine.length >= TURRET.CAP) {
+      const oldest = mine.sort((a, b) => a.placedAt - b.placedAt)[0];
+      delete room.turrets[oldest.id];
+      io.to(data.roomCode).emit('turret_removed', { turretId: oldest.id });
+    }
+    const id = 'turret_' + Math.random().toString(36).substring(2, 9);
+    room.turrets[id] = {
+      id, x: data.x, y: data.y, ownerId: socket.id,
+      hp: TURRET.HP, placedAt: Date.now(), lastFire: 0
+    };
+    io.to(data.roomCode).emit('turret_spawned', { turretId: id, x: data.x, y: data.y, ownerId: socket.id });
+  });
+
+  // "Tháp Khuếch Đại" (Engineer R) — pylon buff tốc bắn đồng minh trong vùng.
+  // Áp kiểu shield_wall: ai trong bán kính lúc đặt thì nhận buff `duration`ms.
+  socket.on('pylon_active', (data) => {
+    // data: { roomCode, x, y, radius, duration }
+    const room = activeRooms[data.roomCode];
+    if (!room) return;
+    const sender = room.players.find(p => p.id === socket.id);
+    if (!sender || (sender.class || '').toLowerCase() !== 'engineer') return;
+    socket.to(data.roomCode).emit('pylon_active', data); // caster tự áp client-side
+  });
+
   socket.on('team_stim', (data) => {
     // data: { roomCode, duration, sourceId } — chỉ Scientist được phát
     const room = activeRooms[data.roomCode];
@@ -958,6 +1004,32 @@ setInterval(() => {
       if (now - ps.lastTick >= 1000) {
         ps.lastTick += 1000;
         applyZombieDamage(room, code, zId, ps.dps, ps.by);
+      }
+    }
+
+    // 2d. Súng Máy (Engineer) — host-authority: tự ngắm zombie gần nhất + bào HP khi bị vây.
+    if (room.turrets) {
+      for (const tid of Object.keys(room.turrets)) {
+        const t = room.turrets[tid];
+        if (now - t.placedAt > TURRET.LIFETIME || t.hp <= 0) {
+          delete room.turrets[tid];
+          io.to(code).emit('turret_removed', { turretId: tid });
+          continue;
+        }
+        let nearest = null, md = Infinity;
+        for (const zId in room.zombies) {
+          const z = room.zombies[zId];
+          if (z.isDead) continue;
+          const d = Math.hypot(z.x - t.x, z.y - t.y);
+          if (d < TURRET.ATTACK_RADIUS) t.hp -= 1; // zombie cận kề bào HP (~20/s/zombie)
+          if (d <= TURRET.RANGE && d < md) { md = d; nearest = zId; }
+        }
+        if (nearest && now - t.lastFire >= TURRET.INTERVAL) {
+          t.lastFire = now;
+          const z = room.zombies[nearest];
+          io.to(code).emit('turret_fired', { turretId: tid, x: t.x, y: t.y, tx: z.x, ty: z.y });
+          applyZombieDamage(room, code, nearest, TURRET.DAMAGE, t.ownerId);
+        }
       }
     }
 

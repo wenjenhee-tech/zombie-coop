@@ -108,9 +108,9 @@ const CLASS_SKILLS = {
     { key: 'R', name: 'Liều Kích Thích', passive: false }
   ],
   Engineer: [
-    { key: 'Q', name: 'Bãi Mìn',    passive: false },
+    { key: 'Q', name: 'Súng Máy',   passive: false },
     { key: 'E', name: 'Bẫy Băng',   passive: false },
-    { key: 'R', name: 'Súng Lưới',  passive: false }
+    { key: 'R', name: 'Tháp Khuếch Đại', passive: false }
   ]
 };
 

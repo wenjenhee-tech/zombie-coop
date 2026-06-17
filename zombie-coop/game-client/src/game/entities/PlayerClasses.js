@@ -255,15 +255,13 @@ export class Engineer extends Player {
     this.body.setSize(24, 34); // sprite 48px → hitbox khớp thân
   }
 
+  // Active "Dựng Súng Máy" (Q) — đặt turret host-authority tại chỗ (cap 2, tự bắn 18dmg/0.6s,
+  // sống 18s hoặc tới khi bị zombie vây bào hết HP). Server làm chủ toàn bộ.
   usePrimarySkill() {
-    for (let i = 0; i < 5; i++) {
-      store.socket.emit('mine_placed', {
-        roomCode: store.playerStats.roomCode,
-        x: this.x + Phaser.Math.Between(-160, 160),
-        y: this.y + Phaser.Math.Between(-160, 160),
-        isFreeze: false
-      });
-    }
+    store.socket.emit('place_turret', {
+      roomCode: store.playerStats.roomCode,
+      x: this.x, y: this.y
+    });
   }
 
   useSecondarySkill() {
@@ -274,26 +272,26 @@ export class Engineer extends Player {
     });
   }
 
-  // Active "Súng Lưới" (R) — bắn lưới (tầm tối đa 320) đóng băng zombie vùng 120 trong 3s + 20 dmg.
+  // Active "Tháp Khuếch Đại" (R) — đặt pylon tại chỗ: đồng minh trong bán kính 280 nhận
+  // +30% tốc bắn trong 8s. Server relay cho đồng đội; bản thân tự áp + tự vẽ tháp.
   useTertiarySkill() {
-    const p = this.scene.input.activePointer;
-    const ang = Phaser.Math.Angle.Between(this.x, this.y, p.worldX, p.worldY);
-    const range = Math.min(Phaser.Math.Distance.Between(this.x, this.y, p.worldX, p.worldY), 320);
-    const tx = this.x + Math.cos(ang) * range;
-    const ty = this.y + Math.sin(ang) * range;
-    const net = this.scene.add.graphics({ x: this.x, y: this.y });
-    net.lineStyle(2, 0xecf0f1, 1);
-    net.strokeCircle(0, 0, 6);
-    this.scene.tweens.add({
-      targets: net, x: tx, y: ty, duration: 350,
-      onComplete: () => {
-        net.destroy();
-        store.socket.emit('skill_burst', {
-          roomCode: store.playerStats.roomCode,
-          x: tx, y: ty, radius: 120, damage: 20, effect: 'freeze', fx: 'net'
-        });
-      }
+    const RADIUS = 280, DURATION = 8000;
+    store.socket.emit('pylon_active', {
+      roomCode: store.playerStats.roomCode,
+      x: this.x, y: this.y, radius: RADIUS, duration: DURATION
     });
+    // Caster tự nhận buff (server chỉ relay cho người khác)
+    this.addBuff('Overcharge');
+    this.scene.time.delayedCall(DURATION, () => this.removeBuff('Overcharge'));
+
+    // Hình tháp + vòng aura tồn tại trong thời lượng buff
+    const tower = this.scene.add.graphics({ x: this.x, y: this.y }).setDepth(8);
+    tower.fillStyle(0xf39c12, 0.12); tower.fillCircle(0, 0, RADIUS);
+    tower.lineStyle(2, 0xf6c453, 0.7); tower.strokeCircle(0, 0, RADIUS);
+    tower.fillStyle(0x2c3e50, 1); tower.fillCircle(0, 0, 10);
+    tower.fillStyle(0xf6c453, 1); tower.fillCircle(0, 0, 5);
+    this.scene.tweens.add({ targets: tower, alpha: 0, duration: DURATION,
+      onComplete: () => tower.destroy() });
   }
 
   passiveTick(time) {

@@ -46,9 +46,10 @@ const STATS = {
   },
   engineer: {
     label: 'Engineer', hp: 95, speed: 210, dmg: 16, fireRate: 150, crit: 0,
-    skills: [{ name: 'Bãi Mìn', dmg: 30, cd: 20000, aoe: true, count: 5 }], // Q
+    skills: [],                // Q→Súng Máy, R→Tháp K.Đại: không gây dmg trực tiếp
     minePassiveDPS: 5,         // Đinh Tán (auto-mìn khi di chuyển), amortized
-    turretDPS: 30,             // proj: Dựng Súng Máy (1 turret)
+    turretDPS: 30,             // proj: Dựng Súng Máy (1 turret ~uptime, 18dmg/0.6s)
+    pylon: { fr: 0.30, uptime: 0.53 }, // proj: Tháp Khuếch Đại tự buff tốc bắn (8s/15s cd)
   },
 };
 
@@ -72,6 +73,7 @@ function clearDPS(key, projected) {
   } else {
     base = autoDPS(s);
     if (projected && s.debuff) base *= (1 + s.debuff.vuln * s.debuff.uptime); // Scientist proj
+    if (projected && s.pylon)  base *= (1 + s.pylon.fr * s.pylon.uptime);      // Engineer proj
   }
   let dps = base + skillDPS(s) + (s.minePassiveDPS || 0);
   if (projected && s.poison) {

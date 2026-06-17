@@ -8,7 +8,8 @@ const BUFF_INCREMENTS = {
   'Regen Aura':  [1.0, 0.5, 0.25],   // HP/s per stack
   'Rapid Fire':  [0.25, 0.15, 0.10],  // fire-rate multiplier per stack
   'Medkit Surge':[20,   15,   10],     // immediate HP per stack
-  'Combat Stim': [0.20]                // +20% tốc chạy (Medic Liều Kích Thích)
+  'Combat Stim': [0.20],               // +20% tốc chạy (Medic Liều Kích Thích)
+  'Overcharge':  [0.30]                // +30% tốc bắn (Engineer Tháp Khuếch Đại) — nhân vào fireRate
 };
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
