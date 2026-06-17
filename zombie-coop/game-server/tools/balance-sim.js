@@ -40,8 +40,9 @@ const STATS = {
   scientist: {
     label: 'Scientist', hp: 95, speed: 215, dmg: 18, fireRate: 160, crit: 0,
     skills: [], // Q hồi máu / R team stim: không gây dmg trực tiếp
-    // proj: Vùng Suy Nhược → +vuln% lên quái bị dính, uptime hữu hiệu
+    // proj: Vùng Suy Nhược (E) → +vuln% lên quái bị dính (uptime hữu hiệu) + độc DoT
     debuff: { vuln: 0.40, uptime: 0.7 },
+    poison: { dps: 5, dur: 5000, cd: 14000, targets: AVG_AOE_TARGETS },
   },
   engineer: {
     label: 'Engineer', hp: 95, speed: 210, dmg: 16, fireRate: 150, crit: 0,
@@ -73,6 +74,10 @@ function clearDPS(key, projected) {
     if (projected && s.debuff) base *= (1 + s.debuff.vuln * s.debuff.uptime); // Scientist proj
   }
   let dps = base + skillDPS(s) + (s.minePassiveDPS || 0);
+  if (projected && s.poison) {
+    const p = s.poison; // độc DoT amortized theo cooldown E
+    dps += (p.dps * (p.dur / 1000) * p.targets) / (p.cd / 1000);
+  }
   if (projected && s.turretDPS) dps += s.turretDPS; // Engineer proj
   return dps;
 }

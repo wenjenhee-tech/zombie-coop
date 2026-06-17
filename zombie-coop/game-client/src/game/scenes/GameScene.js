@@ -155,7 +155,7 @@ export default class GameScene extends Phaser.Scene {
       'zombie_took_damage', 'heal_aoe', 'shield_wall_active', 'taunt_active',
       'intermission_start', 'next_wave_started', 'difficulty_update',
       'you_are_host', 'player_revived', 'mine_placed', 'mine_exploded',
-      'exploder_exploded', 'player_died', 'skill_burst_fx', 'team_stim',
+      'exploder_exploded', 'player_died', 'skill_burst_fx', 'debuff_zone_fx', 'team_stim',
       'powerup_progress', 'wave_countdown_start'
     ];
     events.forEach(e => store.socket.off(e));
@@ -297,6 +297,25 @@ export default class GameScene extends Phaser.Scene {
       ring.lineStyle(3, color, 0.9);
       ring.strokeCircle(x, y, radius);
       this.time.delayedCall(280, () => ring.destroy());
+    });
+
+    // Scientist "Vùng Suy Nhược" — vẽ vùng độc tím + nhuộm các zombie dính debuff.
+    store.socket.on('debuff_zone_fx', ({ x, y, radius, duration, zombieIds }) => {
+      const ring = this.add.graphics();
+      ring.fillStyle(0x9b59b6, 0.22); ring.fillCircle(x, y, radius);
+      ring.lineStyle(3, 0xbe6cd8, 0.9); ring.strokeCircle(x, y, radius);
+      this.tweens.add({ targets: ring, alpha: 0, duration: duration || 5000,
+        onComplete: () => ring.destroy() });
+
+      const ids = new Set(zombieIds || []);
+      this.zombies.getChildren().forEach(z => {
+        if (!z.active || !ids.has(z.id)) return;
+        z.setTint(0xb46cd8);
+        if (z._debuffClear) this.time.removeEvent(z._debuffClear);
+        z._debuffClear = this.time.delayedCall(duration || 5000, () => {
+          if (z.active) z.clearTint();
+        });
+      });
     });
 
     // Medic "Liều Kích Thích" — đồng đội nhận buff lên player local của mình.

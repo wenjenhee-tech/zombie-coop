@@ -337,11 +337,17 @@ function handleIntermission(room, code, now) {
 // Áp sát thương lên 1 zombie theo cách server-authoritative: trừ máu, cộng điểm cho
 // attacker, xử lý screamer-split khi chết, broadcast zombie_took_damage. Dùng chung bởi
 // skill_burst (và có thể tái dùng cho zombie_damaged/mìn sau này).
+// Hệ số "Suy Nhược" (Scientist): zombie dính vuln nhận thêm 40% sát thương.
+function vulnMult(z, now) {
+  return (z.effects && z.effects.vuln && now < z.effects.vuln) ? 1.4 : 1;
+}
+
 function applyZombieDamage(room, code, zId, damage, attackerId) {
   const z = room.zombies[zId];
   if (!z || z.isDead) return;
-  z.hp -= damage;
-  io.to(code).emit('zombie_took_damage', { roomCode: code, zombieId: zId, damage });
+  const dmg = damage * vulnMult(z, Date.now());
+  z.hp -= dmg;
+  io.to(code).emit('zombie_took_damage', { roomCode: code, zombieId: zId, damage: dmg });
   if (z.hp > 0) return;
 
   z.isDead = true;
@@ -532,6 +538,10 @@ io.on('connection', (socket) => {
 
     if (room.telemetry) room.telemetry.shotsHit++;
 
+    // Suy Nhược: nếu zombie đang dính vuln thì sát thương ×1.4 (server-authoritative,
+    // ghi đè data.damage để hp client/server + số nổ hiển thị đồng nhất).
+    data.damage *= vulnMult(room.zombies[data.zombieId], Date.now());
+
     room.zombies[data.zombieId].hp -= data.damage;
     if (room.zombies[data.zombieId].hp <= 0) {
       const dyingZombie = room.zombies[data.zombieId];
@@ -699,6 +709,34 @@ io.on('connection', (socket) => {
     }
     io.to(data.roomCode).emit('skill_burst_fx', {
       x: data.x, y: data.y, radius, effect: data.effect || null, fx: data.fx || null
+    });
+  });
+
+  // "Vùng Suy Nhược" (Scientist E) — debuff vùng: zombie trong bán kính nhận
+  // vuln (+40% sát thương) + nhiễm độc (DoT). Chỉ Scientist được phát.
+  socket.on('debuff_zone', (data) => {
+    // data: { roomCode, x, y, radius, vulnMs, poisonDps, poisonMs }
+    const room = activeRooms[data.roomCode];
+    if (!room || !room.zombies) return;
+    const sender = room.players.find(p => p.id === socket.id);
+    if (!sender || (sender.class || '').toLowerCase() !== 'scientist') return;
+    const now = Date.now();
+    const radius   = data.radius   || 150;
+    const vulnMs   = data.vulnMs   || 5000;
+    const poisonMs = data.poisonMs || 5000;
+    const dps      = data.poisonDps || 5;
+    const affected = [];
+    for (const zId in room.zombies) {
+      const z = room.zombies[zId];
+      if (z.isDead) continue;
+      if (Math.hypot(z.x - data.x, z.y - data.y) > radius) continue;
+      z.effects = z.effects || {};
+      z.effects.vuln   = now + vulnMs;
+      z.effects.poison = { until: now + poisonMs, dps, lastTick: now, by: socket.id };
+      affected.push(zId);
+    }
+    io.to(data.roomCode).emit('debuff_zone_fx', {
+      x: data.x, y: data.y, radius, duration: Math.max(vulnMs, poisonMs), zombieIds: affected
     });
   });
 
@@ -908,6 +946,19 @@ setInterval(() => {
     // Phát 1 message gom cho cả phòng (thay vì 1 message / 1 zombie)
     if (zombieUpdates.length > 0) {
       io.to(code).emit('zombies_updated', zombieUpdates);
+    }
+
+    // 2c. Poison DoT (Scientist "Vùng Suy Nhược") — tick mỗi 1s, server-authoritative.
+    // applyZombieDamage tự cộng vuln + ghi điểm cho Scientist (effects.poison.by).
+    for (const zId of Object.keys(room.zombies)) {
+      const z = room.zombies[zId];
+      const ps = z && z.effects && z.effects.poison;
+      if (!ps) continue;
+      if (now >= ps.until) { delete z.effects.poison; continue; }
+      if (now - ps.lastTick >= 1000) {
+        ps.lastTick += 1000;
+        applyZombieDamage(room, code, zId, ps.dps, ps.by);
+      }
     }
 
     // 2b. Mine Trigger Logic

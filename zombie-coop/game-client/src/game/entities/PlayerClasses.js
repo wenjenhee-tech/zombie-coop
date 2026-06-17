@@ -171,7 +171,7 @@ export class Scientist extends Player {
     this.damage         = 18;
     this.fireRate       = 160;
     this.primaryCooldown   = 20000;
-    this.secondaryCooldown = 30000;
+    this.secondaryCooldown = 14000; // E "Vùng Suy Nhược"
     this.tertiaryCooldown  = 22000;
 
     this.body.setSize(24, 34); // sprite 48px → hitbox khớp thân
@@ -188,6 +188,16 @@ export class Scientist extends Player {
     effect.lineStyle(2, 0x2ecc71, 1);
     effect.strokeCircle(this.x, this.y, 130);
     this.scene.time.delayedCall(300, () => effect.destroy());
+  }
+
+  // Active "Vùng Suy Nhược" (E) — gieo vùng debuff tại chỗ (bán kính 150): zombie dính
+  // +40% sát thương nhận (vuln) + nhiễm độc 5 dmg/s trong 5s. Server-authoritative.
+  useSecondarySkill() {
+    store.socket.emit('debuff_zone', {
+      roomCode:  store.playerStats.roomCode,
+      x: this.x, y: this.y,
+      radius: 150, vulnMs: 5000, poisonDps: 5, poisonMs: 5000
+    });
   }
 
   // Active "Liều Kích Thích" (R) — buff cả đội (gồm bản thân): +40% tốc bắn, +20% tốc chạy 6s.
@@ -216,12 +226,11 @@ export class Scientist extends Player {
       });
     }
 
-    // Auto-Defib (giữ nguyên) — tự cứu khi máu ≤10%
-    const isReady = time > this.lastSecondaryUsed + this.secondaryCooldown;
-    if (!isReady) return;
-    if (this.hp <= this.maxHp * 0.1 && this.hp > 0) {
+    // Auto-Defib — tự cứu khi máu ≤10%. Cooldown RIÊNG (không dùng chung slot E nữa,
+    // vì E giờ là "Vùng Suy Nhược").
+    if (this.hp <= this.maxHp * 0.1 && this.hp > 0 && time > (this._lastDefib || 0) + 30000) {
       this.heal(30);
-      this.lastSecondaryUsed = time;
+      this._lastDefib = time;
       const text = this.scene.add.text(this.x, this.y - 20, '+30 HP', { fontSize: '14px', fill: '#00ff00', fontStyle: 'bold' });
       this.scene.time.delayedCall(800, () => text.destroy());
     }

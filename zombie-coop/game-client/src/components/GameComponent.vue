@@ -104,7 +104,7 @@ const CLASS_SKILLS = {
   ],
   Scientist:   [
     { key: 'Q', name: 'Cứu Thương',  passive: false },
-    { key: 'Passive', name: 'Khử Rung Tim', passive: true },
+    { key: 'E', name: 'Vùng Suy Nhược', passive: false },
     { key: 'R', name: 'Liều Kích Thích', passive: false }
   ],
   Engineer: [
