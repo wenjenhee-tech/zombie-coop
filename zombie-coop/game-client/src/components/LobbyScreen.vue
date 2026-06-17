@@ -2,7 +2,7 @@
   <div class="hud-screen lobby-screen">
     <!-- HEADER: dogtag người chơi -->
     <div class="header">
-      <div class="dogtag" :class="'cls-' + (selectedClass?.id || 'gunner')">
+      <div class="dogtag" :class="'cls-' + (selectedClass?.id || 'ranged')">
         <div class="dt-avatar">{{ selectedClass?.icon || '🔫' }}</div>
         <div class="dt-info">
           <h3>{{ store.playerStats.nickname }}</h3>
@@ -149,8 +149,8 @@ const difficulties = [
 
 const classes = [
   {
-    id: 'gunner', name: 'Gunner', icon: '🔫',
-    desc: 'Sát thương cao, bắn nhanh', role: 'Sát thương',
+    id: 'ranged', name: 'Ranged', icon: '🔫',
+    desc: 'Sát thương cao, bắn nhanh', role: 'Tầm xa',
     stats: { hp: 80, speed: 210, dmg: 35 },
     skills: [
       { key: 'Q', name: 'Mưa Đạn', desc: 'Xuyên giáp, tốc độ đạn ×2 trong 3 giây' },
@@ -159,8 +159,8 @@ const classes = [
     ]
   },
   {
-    id: 'tank', name: 'Tank', icon: '🛡️',
-    desc: 'Máu trâu, giáp dày', role: 'Tanker',
+    id: 'melee', name: 'Melee', icon: '🛡️',
+    desc: 'Máu trâu, giáp dày', role: 'Cận chiến',
     stats: { hp: 150, speed: 150, dmg: 20 },
     skills: [
       { key: 'Q', name: 'Khiên Thép', desc: 'Giảm 60% sát thương nhận trong 5 giây' },
@@ -170,8 +170,8 @@ const classes = [
     ]
   },
   {
-    id: 'medic', name: 'Medic', icon: '💉',
-    desc: 'Hồi máu cho đồng đội', role: 'Hỗ trợ',
+    id: 'scientist', name: 'Scientist', icon: '💉',
+    desc: 'Hồi máu cho đồng đội', role: 'Tăng/Giảm ích',
     stats: { hp: 90, speed: 230, dmg: 15 },
     skills: [
       { key: 'Q', name: 'Cứu Thương', desc: 'Hồi 30 HP cho bản thân và đồng đội xung quanh' },
@@ -180,8 +180,8 @@ const classes = [
     ]
   },
   {
-    id: 'trapper', name: 'Trapper', icon: '🪤',
-    desc: 'Đặt mìn, kiểm soát đám đông', role: 'Kiểm soát',
+    id: 'engineer', name: 'Engineer', icon: '🪤',
+    desc: 'Đặt mìn, kiểm soát đám đông', role: 'Công trình',
     stats: { hp: 85, speed: 230, dmg: 15 },
     skills: [
       { key: 'Q', name: 'Bãi Mìn', desc: 'Đặt 5 mìn AoE gây sát thương vùng' },
@@ -235,10 +235,10 @@ const requestJoin = (roomId) => {
 }
 
 /* per-class accent */
-.cls-gunner  { --cls: var(--cls-gunner); }
-.cls-tank    { --cls: var(--cls-tank); }
-.cls-medic   { --cls: var(--cls-medic); }
-.cls-trapper { --cls: var(--cls-trapper); }
+.cls-ranged    { --cls: var(--cls-ranged); }
+.cls-melee     { --cls: var(--cls-melee); }
+.cls-scientist { --cls: var(--cls-scientist); }
+.cls-engineer  { --cls: var(--cls-engineer); }
 
 /* ---------- HEADER ---------- */
 .header {

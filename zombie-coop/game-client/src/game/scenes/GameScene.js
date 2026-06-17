@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { Gunner, Tank, Medic, Trapper } from '../entities/PlayerClasses';
+import { Ranged, Melee, Scientist, Engineer } from '../entities/PlayerClasses';
 import Zombie from '../entities/Zombie';
 import { store } from '../../store';
 import { generateAllTextures, registerAnims } from '../PixelArtTextures';
@@ -39,8 +39,8 @@ export default class GameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, 1600, 1600);
     this.cameras.main.setBounds(0, 0, 1600, 1600);
 
-    const classMap = { Gunner, Tank, Medic, Trapper };
-    const PlayerClass = classMap[store.playerStats.class] || Gunner;
+    const classMap = { Ranged, Melee, Scientist, Engineer };
+    const PlayerClass = classMap[store.playerStats.class] || Ranged;
     this.player = new PlayerClass(this, this.cameras.main.width / 2, this.cameras.main.height / 2);
     // Unique ID for this client
     this.playerId = store.socket.id;
@@ -160,13 +160,13 @@ export default class GameScene extends Phaser.Scene {
     ];
     events.forEach(e => store.socket.off(e));
 
-    const CLASS_COLORS = { Gunner: 0xe67e22, Tank: 0x2980b9, Medic: 0x27ae60, Trapper: 0xf1c40f };
+    const CLASS_COLORS = { Ranged: 0xe67e22, Melee: 0x2980b9, Scientist: 0x27ae60, Engineer: 0xf1c40f };
 
     store.socket.on('player_moved', (data) => {
       let other = this.otherPlayers.getChildren().find(p => p.id === data.id);
       if (!other) {
         const playerInfo = store.currentRoomDetails.players.find(p => p.id === data.id);
-        const cls = (playerInfo?.class || 'Gunner').toLowerCase();
+        const cls = (playerInfo?.class || 'Ranged').toLowerCase();
         other = this.add.sprite(data.x, data.y, `player_${cls}`);
         other.id = data.id;
         other.weapon = this.add.graphics(); // layer vũ khí riêng, xoay theo aim của họ
@@ -892,7 +892,7 @@ export default class GameScene extends Phaser.Scene {
         bullet.setVisible(false);
       }
       
-      // Nội tại "Sát Thủ" (Gunner): chí mạng ×2 dmg (số dmg lớn hiện qua _damageNumber)
+      // Nội tại "Sát Thủ" (Ranged): chí mạng ×2 dmg (số dmg lớn hiện qua _damageNumber)
       let dmg = bullet.damage || 15;
       if (Math.random() < (this.player.critChance || 0)) {
         dmg *= 2;
@@ -943,7 +943,7 @@ export default class GameScene extends Phaser.Scene {
       this.hpLostThisWave += zombie.damage;
       player.lastHit = this.time.now;
 
-      // Nội tại "Phản Đòn" (Tank): dội 1 phần dmg về zombie tấn công
+      // Nội tại "Phản Đòn" (Melee): dội 1 phần dmg về zombie tấn công
       if (player.thornsRatio && zombie.active && zombie.damage > 0) {
         store.socket.emit('zombie_damaged', {
           roomCode: store.playerStats.roomCode,

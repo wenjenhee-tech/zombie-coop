@@ -960,10 +960,10 @@ function drawStreetlight(ctx) {
 
 export function generateAllTextures(scene) {
   // Tất cả model redesign ở 48px (survivor + zombie hung tợn)
-  makeAtlas(scene, 'player_gunner',  16, drawGunner, 48, 48);
-  makeAtlas(scene, 'player_tank',    16, drawTank, 48, 48);
-  makeAtlas(scene, 'player_medic',   16, drawMedic, 48, 48);
-  makeAtlas(scene, 'player_trapper', 16, drawTrapper, 48, 48);
+  makeAtlas(scene, 'player_ranged',    16, drawGunner, 48, 48);
+  makeAtlas(scene, 'player_melee',     16, drawTank, 48, 48);
+  makeAtlas(scene, 'player_scientist', 16, drawMedic, 48, 48);
+  makeAtlas(scene, 'player_engineer',  16, drawTrapper, 48, 48);
 
   makeAtlas(scene, 'zombie_walker',   8, drawWalker, 48, 48);
   makeAtlas(scene, 'zombie_runner',   8, drawRunner, 48, 48);
@@ -1035,7 +1035,7 @@ export function registerAnims(scene) {
   const dirs = ['down', 'up', 'left', 'right'];
 
   // Player walk anims (8 fps, 4 frames/dir)
-  ['gunner', 'tank', 'medic', 'trapper'].forEach(cls => {
+  ['ranged', 'melee', 'scientist', 'engineer'].forEach(cls => {
     dirs.forEach((dir, di) => {
       scene.anims.create({
         key: `player_${cls}_walk_${dir}`,

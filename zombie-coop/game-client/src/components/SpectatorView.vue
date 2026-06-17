@@ -34,7 +34,7 @@
             <p class="class-status">{{ mate.class }} · <span :class="mate.isAlive ? 'green-text' : 'red-text'">{{ mate.isAlive ? 'Sống' : 'Đã chết' }}</span></p>
             
             <div class="hp-bar-container" v-if="mate.isAlive">
-              <div class="hp-bar" :style="{ width: (mate.hp / mate.maxHp * 100) + '%', backgroundColor: isSpectating(mate) ? '#3498db' : (mate.class === 'Tank' ? '#2ecc71' : '#f39c12') }"></div>
+              <div class="hp-bar" :style="{ width: (mate.hp / mate.maxHp * 100) + '%', backgroundColor: isSpectating(mate) ? '#3498db' : (mate.class === 'Melee' ? '#2ecc71' : '#f39c12') }"></div>
             </div>
             <p class="hp-text">{{ mate.hp }} HP</p>
           </div>

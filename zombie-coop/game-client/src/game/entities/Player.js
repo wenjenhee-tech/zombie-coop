@@ -12,7 +12,7 @@ const BUFF_INCREMENTS = {
 };
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
-  constructor(scene, x, y, texture = 'player_gunner') {
+  constructor(scene, x, y, texture = 'player_ranged') {
     super(scene, x, y, texture);
 
     scene.add.existing(this);
@@ -23,7 +23,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     // Default Stats (overridden by subclasses)
     this.className = 'Base';
-    this.playerClass = 'gunner';
+    this.playerClass = 'ranged';
     this.speed = 200;
     this.maxHp = 100;
     this.hp = this.maxHp;

@@ -85,8 +85,8 @@ const getSpecialStatValue = (p) => {
 
 const getBarColor = (p) => {
   if (p.isYou) return '#3498db';
-  if (p.class === 'Tank') return '#e74c3c';
-  if (p.class === 'Medic') return '#2ecc71';
+  if (p.class === 'Melee') return '#e74c3c';
+  if (p.class === 'Scientist') return '#2ecc71';
   return '#3498db';
 };
 </script>

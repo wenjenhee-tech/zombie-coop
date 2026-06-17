@@ -75,13 +75,13 @@
 import { ref } from 'vue';
 import { store } from '../store.js';
 
-const CLASS_ICON = { gunner: '🔫', tank: '🛡️', medic: '💉', trapper: '🪤' };
+const CLASS_ICON = { ranged: '🔫', melee: '🛡️', scientist: '💉', engineer: '🪤' };
 
 export default {
   setup() {
     const copied = ref(false);
 
-    const classKey = (p) => 'cls-' + ((p?.class || 'gunner').toLowerCase());
+    const classKey = (p) => 'cls-' + ((p?.class || 'ranged').toLowerCase());
     const classIcon = (p) => CLASS_ICON[(p?.class || '').toLowerCase()] || '🧍';
 
     const copyCode = () => {
@@ -124,10 +124,10 @@ export default {
   padding: 32px 72px;
 }
 
-.cls-gunner  { --cls: var(--cls-gunner); }
-.cls-tank    { --cls: var(--cls-tank); }
-.cls-medic   { --cls: var(--cls-medic); }
-.cls-trapper { --cls: var(--cls-trapper); }
+.cls-ranged    { --cls: var(--cls-ranged); }
+.cls-melee     { --cls: var(--cls-melee); }
+.cls-scientist { --cls: var(--cls-scientist); }
+.cls-engineer  { --cls: var(--cls-engineer); }
 
 /* ---------- HEADER ---------- */
 .header {

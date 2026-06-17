@@ -14,7 +14,7 @@
           "_id": { "bsonType": "objectId" },
           "nickname": { "bsonType": "string", "minLength": 2, "maxLength": 20 },
           "passwordHash": { "bsonType": "string", "minLength": 60 },
-          "avatar": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper"] },
+          "avatar": { "bsonType": "string", "enum": ["ranged", "melee", "scientist", "engineer"] },
           "stats": {
             "bsonType": "object",
             "properties": {
@@ -68,7 +68,7 @@
               "properties": {
                 "userId": { "bsonType": "objectId" },
                 "nickname": { "bsonType": "string" },
-                "class": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper"] },
+                "class": { "bsonType": "string", "enum": ["ranged", "melee", "scientist", "engineer"] },
                 "hp": { "bsonType": "int", "minimum": 0, "maximum": 500 },
                 "isAlive": { "bsonType": "bool" }
               }
@@ -94,7 +94,7 @@
         "properties": {
           "_id": { "bsonType": "objectId" },
           "nickname": { "bsonType": "string" },
-          "playerClass": { "bsonType": "string", "enum": ["gunner", "tank", "medic", "trapper", "Gunner", "Tank", "Medic", "Trapper"] },
+          "playerClass": { "bsonType": "string", "enum": ["ranged", "melee", "scientist", "engineer", "Ranged", "Melee", "Scientist", "Engineer"] },
           "wave": { "bsonType": "int", "minimum": 1 },
           "kills": { "bsonType": "int", "minimum": 0 },
           "score": { "bsonType": "int", "minimum": 0 },
@@ -135,7 +135,7 @@
             "bsonType": "object",
             "required": ["className", "bonusMultiplier"],
             "properties": {
-              "className": { "bsonType": "string", "enum": ["Gunner", "Tank", "Medic", "Trapper"] },
+              "className": { "bsonType": "string", "enum": ["Ranged", "Melee", "Scientist", "Engineer"] },
               "bonusMultiplier": { "bsonType": "double" },
               "bonusText": { "bsonType": "string" }
             }

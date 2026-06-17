@@ -16,26 +16,26 @@ function muzzleFlash(g, tipX) {
   g.fillStyle(0xff7a1e, 0.75); g.fillTriangle(tipX, -3.5, tipX, 3.5, tipX + 13, 0);
 }
 
-// g: Phaser.Graphics đã set position/rotation; cls: 'gunner'|'tank'|'medic'|'trapper'
+// g: Phaser.Graphics đã set position/rotation; cls: 'ranged'|'melee'|'scientist'|'engineer'
 export function drawWeapon(g, cls, { active = false, muzzle = false } = {}) {
   g.clear();
   let tip;
   switch (cls) {
-    case 'tank': // shotgun nòng đôi đỏ + báng gỗ
+    case 'melee': // shotgun nòng đôi đỏ + báng gỗ
       g.fillStyle(0x3a2416, 1); g.fillRect(-4, -3, 8, 6);
       g.fillStyle(0x6a1f17, 1); g.fillRect(4, -4.5, 22, 3.5); g.fillRect(4, 1, 22, 3.5);
       g.fillStyle(0x3a120c, 1); g.fillRect(24, -4.5, 3, 9.5);
       g.fillStyle(0xc0392b, 1); g.fillRect(8, -1, 12, 2);
       hands(g, 20, 0x2a1a12); tip = 27; break;
 
-    case 'medic': // súng ngắn accent lục y tế
+    case 'scientist': // súng ngắn accent lục y tế
       g.fillStyle(0x222a25, 1); g.fillRect(2, -2.5, 13, 5);
       g.fillStyle(0x161c18, 1); g.fillRect(3, 2, 4, 7);
       g.fillStyle(0x33403a, 1); g.fillRect(15, -1.5, 6, 3);
       g.fillStyle(0x2ecc71, 1); g.fillRect(5, -3.5, 5, 1.5); g.fillCircle(11, 0, 1.4);
       hands(g, 13, 0x1d3a2a); tip = 21; break;
 
-    case 'trapper': // nỏ: cánh nỏ + dây cung + mũi bolt cam
+    case 'engineer': // nỏ: cánh nỏ + dây cung + mũi bolt cam
       g.fillStyle(0x4a3a14, 1); g.fillRect(-2, -2, 20, 4);
       g.lineStyle(2.5, 0x6a4a18, 1); g.lineBetween(14, -8, 14, 8);
       g.lineStyle(1, 0xccb98a, 1); g.lineBetween(14, -8, 4, 0); g.lineBetween(14, 8, 4, 0);
@@ -43,7 +43,7 @@ export function drawWeapon(g, cls, { active = false, muzzle = false } = {}) {
       g.fillStyle(0xf39c12, 1); g.fillTriangle(26, -2.5, 26, 2.5, 31, 0);
       hands(g, 16, 0x3a2810); tip = 31; break;
 
-    default: { // gunner: súng trường xanh (sáng lên khi Rain of Bullets)
+    default: { // ranged: súng trường xanh (sáng lên khi Rain of Bullets)
       const body = active ? 0x2a4a6a : 0x1c2c3c;
       const steel = active ? 0x3a6fa0 : 0x24465f;
       const acc = active ? 0x46c8ff : 0x2a93d8;

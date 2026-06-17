@@ -11,7 +11,7 @@ export const store = reactive({
 
   playerStats: {
     nickname: '',
-    class: 'Gunner',
+    class: 'Ranged',
     roomCode: '',
     kills: 0,
     waves: 0,
@@ -39,11 +39,11 @@ export const store = reactive({
 
   voteData: {
     wave: 1,
-    class: 'Gunner',
+    class: 'Ranged',
     winner: null,
     options: [
       { id: 'speed_boost', name: 'Speed Boost', desc: '+20% tốc độ di chuyển toàn đội', tier: 1, votes: { type: 'T', count: 1 } },
-      { id: 'fire_ammo', name: 'Fire Ammo', desc: 'Đạn gây damage theo thời gian', tier: 2, isClassBonus: true, bonusText: '+15% Gunner', votes: { type: 'B', count: 0 } },
+      { id: 'fire_ammo', name: 'Fire Ammo', desc: 'Đạn gây damage theo thời gian', tier: 2, isClassBonus: true, bonusText: '+15% Ranged', votes: { type: 'B', count: 0 } },
       { id: 'regen_aura', name: 'Regen Aura', desc: 'Tự hồi 1HP/giây khi không bị tấn công', tier: 1, votes: { type: 'C', count: 0 } }
     ],
     activeBuffs: ['Speed Boost', 'Iron Skin']
@@ -96,13 +96,13 @@ socket.on('room_update', (room) => {
 });
 
 socket.on('game_started', (data) => {
-  const classMaxHp = { Gunner: 80, Tank: 150, Medic: 90, Trapper: 85 };
+  const classMaxHp = { Ranged: 80, Melee: 150, Scientist: 90, Engineer: 85 };
   store.teammates = store.currentRoomDetails.players
     .filter(p => p.id !== socket.id)
     .map(p => ({
       id: p.id,
       name: p.nickname,
-      class: p.class || 'Gunner',
+      class: p.class || 'Ranged',
       hp: classMaxHp[p.class] || 100,
       maxHp: classMaxHp[p.class] || 100,
       isAlive: true
@@ -177,7 +177,7 @@ socket.on('game_over', (data) => {
     return {
       id: p.name.substring(0, 2).toUpperCase(),
       name: p.name,
-      class: p.class || 'Gunner',
+      class: p.class || 'Ranged',
       isYou,
       isMVP: p.id === mvp?.id,
       kills: p.kills || 0,

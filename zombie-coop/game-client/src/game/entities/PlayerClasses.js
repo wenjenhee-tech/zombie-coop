@@ -2,11 +2,11 @@ import Player from './Player';
 import Phaser from 'phaser';
 import { store } from '../../store';
 
-export class Gunner extends Player {
+export class Ranged extends Player {
   constructor(scene, x, y) {
-    super(scene, x, y, 'player_gunner');
-    this.className      = 'Gunner';
-    this.playerClass    = 'gunner';
+    super(scene, x, y, 'player_ranged');
+    this.className      = 'Ranged';
+    this.playerClass    = 'ranged';
     this.color          = 0x3498db;
     this.speed          = 210;
     this.maxHp          = 80;
@@ -76,11 +76,11 @@ export class Gunner extends Player {
   }
 }
 
-export class Tank extends Player {
+export class Melee extends Player {
   constructor(scene, x, y) {
-    super(scene, x, y, 'player_tank');
-    this.className      = 'Tank';
-    this.playerClass    = 'tank';
+    super(scene, x, y, 'player_melee');
+    this.className      = 'Melee';
+    this.playerClass    = 'melee';
     this.color          = 0xe74c3c;
     this.speed          = 150;
     this.maxHp          = 150;
@@ -150,11 +150,11 @@ export class Tank extends Player {
   }
 }
 
-export class Medic extends Player {
+export class Scientist extends Player {
   constructor(scene, x, y) {
-    super(scene, x, y, 'player_medic');
-    this.className      = 'Medic';
-    this.playerClass    = 'medic';
+    super(scene, x, y, 'player_scientist');
+    this.className      = 'Scientist';
+    this.playerClass    = 'scientist';
     this.color          = 0x2ecc71;
     this.speed          = 230;
     this.maxHp          = 90;
@@ -219,11 +219,11 @@ export class Medic extends Player {
   }
 }
 
-export class Trapper extends Player {
+export class Engineer extends Player {
   constructor(scene, x, y) {
-    super(scene, x, y, 'player_trapper');
-    this.className      = 'Trapper';
-    this.playerClass    = 'trapper';
+    super(scene, x, y, 'player_engineer');
+    this.className      = 'Engineer';
+    this.playerClass    = 'engineer';
     this.color          = 0xf39c12;
     this.speed          = 230;
     this.maxHp          = 85;

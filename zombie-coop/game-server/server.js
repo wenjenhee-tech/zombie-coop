@@ -30,7 +30,7 @@ mongoose.connect(MONGO_URI)
 const userSchema = new mongoose.Schema({
   nickname: { type: String, required: true, unique: true },
   passwordHash: { type: String, required: true },
-  avatar: { type: String, enum: ['gunner', 'tank', 'medic', 'trapper'], default: 'gunner' },
+  avatar: { type: String, enum: ['ranged', 'melee', 'scientist', 'engineer'], default: 'ranged' },
   stats: {
     bestWave: { type: Number, default: 0 },
     totalGames: { type: Number, default: 0 },
@@ -56,7 +56,7 @@ const roomSchema = new mongoose.Schema({
   players: [{
     userId: { type: mongoose.Schema.Types.ObjectId },
     nickname: String,
-    class: { type: String, enum: ['gunner', 'tank', 'medic', 'trapper'], default: 'gunner' },
+    class: { type: String, enum: ['ranged', 'melee', 'scientist', 'engineer'], default: 'ranged' },
     hp: { type: Number, default: 100 },
     isAlive: { type: Boolean, default: true }
   }],
@@ -88,7 +88,7 @@ const AiDifficulty = mongoose.model('AiDifficulty', aiDifficultySchema, 'ai_diff
 
 const scoreSchema = new mongoose.Schema({
   nickname: { type: String, required: true },
-  playerClass: { type: String, default: 'Gunner' },
+  playerClass: { type: String, default: 'Ranged' },
   wave: { type: Number, default: 1 },
   kills: { type: Number, default: 0 },
   score: { type: Number, default: 0 },
@@ -279,7 +279,7 @@ function checkGameOver(room, code) {
   const playerCount = room.players.length;
 
   Score.insertMany(room.players.map(p => ({
-    nickname: p.nickname, playerClass: p.class || 'Gunner',
+    nickname: p.nickname, playerClass: p.class || 'Ranged',
     wave: finishedWave, kills: p.kills || 0, score: p.score || 0, playerCount
   }))).catch(err => console.error('Score save error:', err));
 
@@ -296,7 +296,7 @@ function checkGameOver(room, code) {
   io.to(code).emit('game_over', {
     wave: room.currentWave, result: 'Thua', elapsedMs,
     players: room.players.map(p => ({
-      id: p.id, name: p.nickname, class: p.class || 'Gunner',
+      id: p.id, name: p.nickname, class: p.class || 'Ranged',
       kills: p.kills || 0, score: p.score || 0, isAlive: p.isAlive
     }))
   });
@@ -402,7 +402,7 @@ io.on('connection', (socket) => {
         difficulty: (data.difficulty || 'NORMAL').toUpperCase(),
         status: 'waiting',
         currentWave: 1,
-        players: [{ nickname: data.hostName, class: (data.class || 'Gunner').toLowerCase(), hp: 100, isAlive: true }]
+        players: [{ nickname: data.hostName, class: (data.class || 'Ranged').toLowerCase(), hp: 100, isAlive: true }]
       });
     } catch(e) { console.error("Failed to save room to DB", e); }
   });
@@ -630,7 +630,7 @@ io.on('connection', (socket) => {
     const room = activeRooms[data.roomCode];
     if (!room) return;
     const sender = room.players.find(p => p.id === socket.id);
-    if (!sender || (sender.class || '').toLowerCase() !== 'medic') return; // chỉ Medic
+    if (!sender || (sender.class || '').toLowerCase() !== 'scientist') return; // chỉ Scientist
     socket.to(data.roomCode).emit('heal_aoe', data);
   });
 
@@ -703,11 +703,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('team_stim', (data) => {
-    // data: { roomCode, duration, sourceId } — chỉ Medic được phát
+    // data: { roomCode, duration, sourceId } — chỉ Scientist được phát
     const room = activeRooms[data.roomCode];
     if (!room) return;
     const sender = room.players.find(p => p.id === socket.id);
-    if (!sender || (sender.class || '').toLowerCase() !== 'medic') return;
+    if (!sender || (sender.class || '').toLowerCase() !== 'scientist') return;
     socket.to(data.roomCode).emit('team_stim', data);
   });
 
@@ -1028,7 +1028,7 @@ setInterval(() => {
 
       const POWERUP_POOL = [
         { id: 'speed_boost', name: 'Speed Boost', desc: '+20% tốc độ di chuyển', tier: 1 },
-        { id: 'fire_ammo', name: 'Fire Ammo', desc: 'Đạn gây damage theo thời gian', tier: 2, isClassBonus: true, bonusText: '+15% Gunner' },
+        { id: 'fire_ammo', name: 'Fire Ammo', desc: 'Đạn gây damage theo thời gian', tier: 2, isClassBonus: true, bonusText: '+15% Ranged' },
         { id: 'iron_skin', name: 'Iron Skin', desc: 'Giảm 20% damage nhận vào', tier: 2 },
         { id: 'regen_aura', name: 'Regen Aura', desc: 'Tự hồi 1HP/giây khi không bị tấn công', tier: 1 },
         { id: 'rapid_fire', name: 'Rapid Fire', desc: '+25% tốc độ bắn', tier: 2 },
@@ -1036,10 +1036,10 @@ setInterval(() => {
       ];
 
       const CLASS_PREFERRED = {
-        gunner:  ['rapid_fire', 'fire_ammo'],
-        tank:    ['iron_skin', 'medkit_surge'],
-        medic:   ['regen_aura', 'medkit_surge'],
-        trapper: ['speed_boost', 'iron_skin'],
+        ranged:    ['rapid_fire', 'fire_ammo'],
+        melee:     ['iron_skin', 'medkit_surge'],
+        scientist: ['regen_aura', 'medkit_surge'],
+        engineer:  ['speed_boost', 'iron_skin'],
       };
 
       function getPersonalizedOptions(playerClass) {
@@ -1194,7 +1194,7 @@ app.get('/api/leaderboard', async (req, res) => {
       rank: i + 1,
       id: e._id.substring(0, 2).toUpperCase(),
       name: e._id,
-      class: e.playerClass || 'Gunner',
+      class: e.playerClass || 'Ranged',
       players: e.playerCount || 1,
       wave: e.bestWave,
       score: e.totalScore

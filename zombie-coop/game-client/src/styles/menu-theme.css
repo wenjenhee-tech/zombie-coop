@@ -30,10 +30,10 @@
   --hud-ok:        #46c87a;
 
   /* màu 4 class */
-  --cls-gunner:  #2a93d8;
-  --cls-tank:    #e0503a;
-  --cls-medic:   #2ecc71;
-  --cls-trapper: #f0a830;
+  --cls-ranged:    #2a93d8;
+  --cls-melee:     #e0503a;
+  --cls-scientist: #2ecc71;
+  --cls-engineer:  #f0a830;
 
   --font-display: 'Black Ops One', 'Oswald', sans-serif;
   --font-head:    'Oswald', 'Inter', sans-serif;

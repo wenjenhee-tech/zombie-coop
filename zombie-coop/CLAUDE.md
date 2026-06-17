@@ -21,7 +21,7 @@ No test suite (`npm test` is a placeholder).
 
 ## Entities
 
-- **Players**: base `Player.js` (extends Arcade.Sprite); 4 classes in `PlayerClasses.js` (Gunner/Tank/Medic/Trapper) override stats + skills. Keybinds: `Q`→`usePrimarySkill`, `E`→`useSecondarySkill`, `R`→`useTertiarySkill` (each cooldown-guarded), WASD move. Passives (Gunner Adrenaline, Medic Auto-Defib) auto-fire in `passiveTick()`.
+- **Players**: base `Player.js` (extends Arcade.Sprite); 4 classes in `PlayerClasses.js` (Ranged/Melee/Scientist/Engineer — class keys `ranged`/`melee`/`scientist`/`engineer`, renamed from gunner/tank/medic/trapper) override stats + skills. Keybinds: `Q`→`usePrimarySkill`, `E`→`useSecondarySkill`, `R`→`useTertiarySkill` (each cooldown-guarded), WASD move. Passives (Ranged Adrenaline, Scientist Auto-Defib) auto-fire in `passiveTick()`.
 - **Zombies**: types + stats in `Zombie.js` `setupStats()` (walker/runner/brute/spitter/screamer/exploder/hordeking). Behavior notes: spitter ranged-spits on host only; screamer splits into 3 walkers on server death; exploder suicide-AoEs; hordeking is the wave-10 boss (500 HP). **HP must stay in sync** between `Zombie.setupStats` (client) and the server `HP_TABLE`.
 - **Rendering** is texture-atlas based (no per-frame Phaser.Graphics): all sprites use 48px atlases generated in `PixelArtTextures.js` (`player_<class>` / `zombie_<type>` keys, walk anims `<key>_walk_<dir>`). Zombies scale via `setScale(size/48)`. To restyle a model, edit its `draw*` function there.
 - **Buffs**: string IDs in `player.activeBuffs[]` via `hasBuff`/`addBuff` (idempotent), checked inline in movement/damage/shoot. Powerup vote → winning buff applied in `next_wave_started` listener (GameScene.js). Server guards: `voteResolved` (rejects late `cast_vote`), `start_next_wave` no-op if `isWaveActive`.
@@ -29,7 +29,7 @@ No test suite (`npm test` is a placeholder).
 ## Socket contract (non-obvious validations)
 
 - `zombie_damaged` — server validates with `isDead` flag (idempotent across clients); screamer death triggers the 3-walker split here.
-- `heal_aoe` / `mine_placed` — sender class must be Medic / Trapper respectively, else dropped.
+- `heal_aoe` / `team_stim` — sender class must be Scientist (`scientist`), else dropped. (`mine_placed` has no class guard.)
 - `taunt_active` — sets `room.tauntActive` (pathing override) + relays.
 - `player_died` — records `deathTime/deathX/deathY`, broadcasts position, fires `game_over` only when **all** players dead.
 - `zombie_spawn`/`zombie_update` and `revive_request` are **removed/empty stubs** — do not rely on them.

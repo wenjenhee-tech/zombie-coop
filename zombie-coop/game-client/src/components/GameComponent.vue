@@ -92,29 +92,29 @@ import { store } from '../store';
 let game = null;
 
 const CLASS_SKILLS = {
-  Gunner:  [
+  Ranged:  [
     { key: 'Q', name: 'Mưa Đạn',    passive: false },
     { key: 'Passive', name: 'Adrenaline', passive: true },
     { key: 'R', name: 'Lựu Đạn Cụm', passive: false }
   ],
-  Tank:    [
+  Melee:    [
     { key: 'Q', name: 'Khiên Thép',  passive: false },
     { key: 'E', name: 'Khiêu Chiến', passive: false },
     { key: 'R', name: 'Giậm Đất',    passive: false }
   ],
-  Medic:   [
+  Scientist:   [
     { key: 'Q', name: 'Cứu Thương',  passive: false },
     { key: 'Passive', name: 'Khử Rung Tim', passive: true },
     { key: 'R', name: 'Liều Kích Thích', passive: false }
   ],
-  Trapper: [
+  Engineer: [
     { key: 'Q', name: 'Bãi Mìn',    passive: false },
     { key: 'E', name: 'Bẫy Băng',   passive: false },
     { key: 'R', name: 'Súng Lưới',  passive: false }
   ]
 };
 
-const skills = computed(() => CLASS_SKILLS[store.playerStats.class] ?? CLASS_SKILLS.Gunner);
+const skills = computed(() => CLASS_SKILLS[store.playerStats.class] ?? CLASS_SKILLS.Ranged);
 
 const primaryReady    = computed(() => (store.playerStats.primaryCDReadyRatio  ?? 1) >= 1);
 const secondaryReady  = computed(() => (store.playerStats.secondaryCDReadyRatio ?? 1) >= 1);
