@@ -1,44 +1,56 @@
 <template>
-  <div class="login-screen">
-    <div class="vignette"></div>
-    <div class="grain"></div>
-    
-    <div class="login-card">
-      <div class="brand">
-        <h1>DEAD <span class="accent">ZONE</span></h1>
-        <p>Co-op Survival</p>
-      </div>
-      
-      <div class="tabs">
-        <div class="tab" :class="{ active: isLogin }" @click="isLogin = true">ĐĂNG NHẬP</div>
-        <div class="tab" :class="{ active: !isLogin }" @click="isLogin = false">ĐĂNG KÝ</div>
-      </div>
+  <div class="hud-screen login-screen">
+    <div class="login-card hud-frame">
+      <div class="hazard-bar"></div>
+      <div class="hud-corners"></div>
 
-      <div class="form">
-        <div class="input-group">
-          <label>TÊN NGƯỜI DÙNG</label>
-          <input type="text" v-model="nickname" placeholder="Nhập tên hiệu..." />
-        </div>
-        <div class="input-group">
-          <label>MẬT KHẨU</label>
-          <input type="password" v-model="password" placeholder="••••••••" />
-        </div>
-        <div class="input-group" v-if="!isLogin">
-          <label>XÁC NHẬN MẬT KHẨU</label>
-          <input type="password" v-model="confirmPassword" placeholder="••••••••" />
-        </div>
-        
-        <div v-if="errorMessage" class="error-msg">
-          ⚠️ {{ errorMessage }}
-        </div>
-        <div v-if="successMessage" class="success-msg">
-          ✅ {{ successMessage }}
+      <div class="card-body">
+        <div class="brand">
+          <div class="brand-glyph">☣</div>
+          <h1>DEAD <span class="accent">ZONE</span></h1>
+          <p class="brand-sub">TỬ KHU // CO-OP SURVIVAL</p>
+          <div class="sys-status">
+            <span class="hud-dot"></span>
+            <span class="hud-tag">MÁY CHỦ &mdash; TRỰC TUYẾN</span>
+          </div>
         </div>
 
-        <button class="btn-primary" @click="handleSubmit" :disabled="isLoading">
-          <span v-if="isLoading" class="spinner"></span>
-          <span v-else>{{ isLogin ? 'KẾT NỐI MÁY CHỦ' : 'TẠO TÀI KHOẢN' }}</span>
-        </button>
+        <div class="tabs">
+          <div class="tab" :class="{ active: isLogin }" @click="isLogin = true">ĐĂNG NHẬP</div>
+          <div class="tab" :class="{ active: !isLogin }" @click="isLogin = false">ĐĂNG KÝ</div>
+        </div>
+
+        <div class="form">
+          <div class="input-group">
+            <label>TÊN NGƯỜI DÙNG</label>
+            <input type="text" v-model="nickname" placeholder="Nhập tên hiệu..." @keyup.enter="handleSubmit" />
+          </div>
+          <div class="input-group">
+            <label>MẬT KHẨU</label>
+            <input type="password" v-model="password" placeholder="••••••••" @keyup.enter="handleSubmit" />
+          </div>
+          <div class="input-group" v-if="!isLogin">
+            <label>XÁC NHẬN MẬT KHẨU</label>
+            <input type="password" v-model="confirmPassword" placeholder="••••••••" @keyup.enter="handleSubmit" />
+          </div>
+
+          <div v-if="errorMessage" class="error-msg">
+            ⚠️ {{ errorMessage }}
+          </div>
+          <div v-if="successMessage" class="success-msg">
+            ✅ {{ successMessage }}
+          </div>
+
+          <button class="btn-primary" @click="handleSubmit" :disabled="isLoading">
+            <span v-if="isLoading" class="spinner"></span>
+            <span v-else>{{ isLogin ? '▶  KẾT NỐI MÁY CHỦ' : '＋  TẠO TÀI KHOẢN' }}</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card-foot">
+        <span class="hud-tag">PROTOCOL: SURVIVAL</span>
+        <span class="hud-tag">BUILD v1.0</span>
       </div>
     </div>
   </div>
@@ -109,180 +121,148 @@ const handleSubmit = async () => {
 
 <style scoped>
 .login-screen {
-  width: 100%;
-  height: 100%;
-  background-color: #0f0f0f;
   display: flex;
   justify-content: center;
   align-items: center;
-  position: relative;
-  font-family: 'Inter', sans-serif;
-  color: #e0e0e0;
-}
-
-.vignette {
-  position: absolute;
-  top: 0; left: 0; width: 100%; height: 100%;
-  box-shadow: 0 0 200px rgba(0,0,0,0.9) inset;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.grain {
-  position: absolute;
-  top: 0; left: 0; width: 100%; height: 100%;
-  background-image: url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
-  opacity: 0.05;
-  pointer-events: none;
-  z-index: 2;
 }
 
 .login-card {
-  background: rgba(26, 26, 26, 0.8);
+  width: 420px;
+  background: var(--hud-panel);
   backdrop-filter: blur(10px);
-  border: 1px solid #333;
-  border-top: 2px solid #b71c1c;
-  border-radius: 4px;
-  padding: 40px;
-  width: 400px;
-  z-index: 10;
-  box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+  border: 1px solid var(--hud-line);
+  border-radius: var(--hud-radius);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
 }
 
-.brand {
-  text-align: center;
-  margin-bottom: 30px;
+.card-body { padding: 34px 40px 28px; }
+
+/* hazard bar nằm sát mép trên card */
+.login-card .hazard-bar { margin: 0 0 0 0; }
+
+.brand { text-align: center; margin-bottom: 26px; }
+.brand-glyph {
+  font-size: 34px;
+  color: var(--hud-amber);
+  line-height: 1;
+  margin-bottom: 6px;
+  filter: drop-shadow(0 0 10px rgba(245, 166, 35, 0.4));
 }
 .brand h1 {
-  font-size: 42px;
+  font-family: var(--font-display);
+  font-size: 44px;
   margin: 0;
+  letter-spacing: 3px;
+  color: #f2f2f2;
+  text-shadow: 0 2px 0 #000, 0 0 24px rgba(193, 18, 31, 0.35);
+}
+.accent { color: var(--hud-blood-2); }
+.brand-sub {
+  font-family: var(--font-head);
+  color: var(--hud-ink-dim);
+  margin: 8px 0 0 0;
   letter-spacing: 4px;
-  font-weight: 800;
-}
-.accent {
-  color: #d32f2f;
-}
-.brand p {
-  color: #888;
-  margin: 5px 0 0 0;
-  letter-spacing: 2px;
-  font-size: 14px;
+  font-size: 12px;
   text-transform: uppercase;
 }
-
-.tabs {
-  display: flex;
-  margin-bottom: 25px;
-  border-bottom: 1px solid #333;
+.sys-status {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 14px;
+  padding: 4px 12px;
+  border: 1px solid var(--hud-line);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.3);
 }
+
+.tabs { display: flex; margin-bottom: 22px; border-bottom: 1px solid var(--hud-line); }
 .tab {
-  flex: 1;
-  text-align: center;
-  padding: 10px;
-  color: #888;
-  cursor: pointer;
-  font-weight: bold;
-  letter-spacing: 1px;
-  transition: all 0.2s;
+  flex: 1; text-align: center; padding: 11px;
+  color: var(--hud-ink-dim); cursor: pointer;
+  font-family: var(--font-head); font-weight: 600;
+  letter-spacing: 2px; transition: all 0.2s;
 }
-.tab:hover {
-  color: #ccc;
-}
+.tab:hover { color: #ccc; }
 .tab.active {
-  color: #d32f2f;
-  border-bottom: 2px solid #d32f2f;
+  color: var(--hud-blood-2);
+  border-bottom: 2px solid var(--hud-blood-2);
+  text-shadow: 0 0 12px rgba(239, 59, 59, 0.4);
 }
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.input-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.form { display: flex; flex-direction: column; gap: 15px; }
+.input-group { display: flex; flex-direction: column; gap: 7px; }
 .input-group label {
-  font-size: 12px;
-  color: #888;
-  letter-spacing: 1px;
-  font-weight: bold;
+  font-family: var(--font-head);
+  font-size: 11px; color: var(--hud-ink-dim);
+  letter-spacing: 2px; font-weight: 600;
 }
 .input-group input {
-  background-color: #111;
-  border: 1px solid #333;
+  background-color: #0c0d10;
+  border: 1px solid var(--hud-line);
+  border-left: 2px solid var(--hud-line-2);
   color: white;
-  padding: 12px 15px;
-  border-radius: 4px;
-  font-size: 16px;
-  font-family: 'Inter', sans-serif;
-  transition: all 0.3s;
+  padding: 12px 14px;
+  border-radius: var(--hud-radius);
+  font-size: 15px;
+  font-family: var(--font-body);
+  transition: all 0.2s;
 }
+.input-group input::placeholder { color: #4f535b; }
 .input-group input:focus {
   outline: none;
-  border-color: #d32f2f;
-  background-color: #151515;
+  border-color: var(--hud-amber);
+  border-left-color: var(--hud-amber);
+  background-color: #111;
+  box-shadow: 0 0 0 1px var(--hud-amber-dim), 0 0 14px rgba(245, 166, 35, 0.12);
 }
 
 .error-msg {
-  color: #ff5252;
-  background-color: rgba(183, 28, 28, 0.1);
-  border: 1px solid #b71c1c;
-  padding: 10px;
-  border-radius: 4px;
-  font-size: 13px;
-  text-align: center;
+  color: #ff6b6b;
+  background-color: var(--hud-blood-dim);
+  border: 1px solid var(--hud-blood);
+  border-left: 3px solid var(--hud-blood-2);
+  padding: 10px; border-radius: var(--hud-radius);
+  font-size: 13px; text-align: left;
 }
 .success-msg {
-  color: #4caf50;
-  background-color: rgba(76, 175, 80, 0.1);
-  border: 1px solid #4caf50;
-  padding: 10px;
-  border-radius: 4px;
-  font-size: 13px;
-  text-align: center;
+  color: #6bdc8c;
+  background-color: rgba(70, 200, 122, 0.1);
+  border: 1px solid var(--hud-ok);
+  border-left: 3px solid var(--hud-ok);
+  padding: 10px; border-radius: var(--hud-radius);
+  font-size: 13px; text-align: left;
 }
 
 .btn-primary {
-  margin-top: 10px;
-  background-color: #b71c1c;
-  color: white;
-  border: none;
-  padding: 15px;
-  border-radius: 4px;
-  font-size: 16px;
-  font-weight: bold;
-  letter-spacing: 1px;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-family: 'Inter', sans-serif;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 50px;
+  margin-top: 8px;
+  background: linear-gradient(180deg, var(--hud-blood-2), var(--hud-blood));
+  color: white; border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 15px; border-radius: var(--hud-radius);
+  font-family: var(--font-head);
+  font-size: 16px; font-weight: 700; letter-spacing: 2px;
+  cursor: pointer; transition: all 0.2s;
+  display: flex; justify-content: center; align-items: center;
+  height: 52px;
 }
 .btn-primary:hover:not(:disabled) {
-  background-color: #d32f2f;
-  box-shadow: 0 0 15px rgba(211, 47, 47, 0.4);
+  filter: brightness(1.1);
+  box-shadow: 0 0 22px rgba(239, 59, 59, 0.45);
 }
-.btn-primary:disabled {
-  background-color: #555;
-  cursor: not-allowed;
-  opacity: 0.7;
+.btn-primary:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary:disabled { background: #3a3a3a; color: #777; cursor: not-allowed; }
+
+.card-foot {
+  display: flex; justify-content: space-between;
+  padding: 12px 40px;
+  border-top: 1px solid var(--hud-line);
+  background: var(--hud-panel-2);
 }
 
 .spinner {
-  width: 20px;
-  height: 20px;
-  border: 3px solid rgba(255,255,255,0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+  width: 20px; height: 20px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white; border-radius: 50%;
+  animation: hud-spin 1s linear infinite;
 }
 </style>
