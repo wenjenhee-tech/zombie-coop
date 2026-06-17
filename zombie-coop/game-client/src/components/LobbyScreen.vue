@@ -48,7 +48,7 @@
             <div class="stat-row">
               <span class="stat-label">HP</span>
               <div class="stat-bar-bg">
-                <div class="stat-bar-fill hp" :style="{ width: (selectedClass.stats.hp / 150 * 100) + '%' }"></div>
+                <div class="stat-bar-fill hp" :style="{ width: (selectedClass.stats.hp / 170 * 100) + '%' }"></div>
               </div>
               <span class="stat-val">{{ selectedClass.stats.hp }}</span>
             </div>
@@ -62,7 +62,7 @@
             <div class="stat-row">
               <span class="stat-label">DMG</span>
               <div class="stat-bar-bg">
-                <div class="stat-bar-fill dmg" :style="{ width: (selectedClass.stats.dmg / 35 * 100) + '%' }"></div>
+                <div class="stat-bar-fill dmg" :style="{ width: (selectedClass.stats.dmg / 50 * 100) + '%' }"></div>
               </div>
               <span class="stat-val">{{ selectedClass.stats.dmg }}</span>
             </div>
@@ -151,7 +151,7 @@ const classes = [
   {
     id: 'ranged', name: 'Ranged', icon: '🔫',
     desc: 'Sát thương cao, bắn nhanh', role: 'Tầm xa',
-    stats: { hp: 80, speed: 210, dmg: 35 },
+    stats: { hp: 85, speed: 200, dmg: 20 },
     skills: [
       { key: 'Q', name: 'Mưa Đạn', desc: 'Xuyên giáp, tốc độ đạn ×2 trong 3 giây' },
       { key: 'Passive', name: 'Adrenaline', desc: 'HP < 30% → tự động tăng 40% tốc bắn' },
@@ -160,8 +160,8 @@ const classes = [
   },
   {
     id: 'melee', name: 'Melee', icon: '🛡️',
-    desc: 'Máu trâu, giáp dày', role: 'Cận chiến',
-    stats: { hp: 150, speed: 150, dmg: 20 },
+    desc: 'Chém cleave + hút máu, máu trâu', role: 'Cận chiến',
+    stats: { hp: 160, speed: 155, dmg: 48 },
     skills: [
       { key: 'Q', name: 'Khiên Thép', desc: 'Giảm 60% sát thương nhận trong 5 giây' },
       { key: 'E', name: 'Khiêu Chiến', desc: 'Kéo zombie tập trung vào mình trong 8 giây' },
@@ -172,7 +172,7 @@ const classes = [
   {
     id: 'scientist', name: 'Scientist', icon: '💉',
     desc: 'Hồi máu cho đồng đội', role: 'Tăng/Giảm ích',
-    stats: { hp: 90, speed: 230, dmg: 15 },
+    stats: { hp: 95, speed: 215, dmg: 18 },
     skills: [
       { key: 'Q', name: 'Cứu Thương', desc: 'Hồi 30 HP cho bản thân và đồng đội xung quanh' },
       { key: 'Passive', name: 'Khử Rung Tim', desc: 'HP < 10% → tự hồi 30 HP (CD: 30s)' },
@@ -182,7 +182,7 @@ const classes = [
   {
     id: 'engineer', name: 'Engineer', icon: '🪤',
     desc: 'Đặt mìn, kiểm soát đám đông', role: 'Công trình',
-    stats: { hp: 85, speed: 230, dmg: 15 },
+    stats: { hp: 95, speed: 210, dmg: 16 },
     skills: [
       { key: 'Q', name: 'Bãi Mìn', desc: 'Đặt 5 mìn AoE gây sát thương vùng' },
       { key: 'E', name: 'Bẫy Băng', desc: 'Đặt 1 mìn đóng băng zombie trong 3 giây' },

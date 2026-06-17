@@ -96,7 +96,7 @@ socket.on('room_update', (room) => {
 });
 
 socket.on('game_started', (data) => {
-  const classMaxHp = { Ranged: 80, Melee: 150, Scientist: 90, Engineer: 85 };
+  const classMaxHp = { Ranged: 85, Melee: 160, Scientist: 95, Engineer: 95 };
   store.teammates = store.currentRoomDetails.players
     .filter(p => p.id !== socket.id)
     .map(p => ({

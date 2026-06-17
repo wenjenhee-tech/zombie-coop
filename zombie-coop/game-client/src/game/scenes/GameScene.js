@@ -726,6 +726,9 @@ export default class GameScene extends Phaser.Scene {
     if (!this.player || !this.player.active) return;
     if (!this.isWaveActive) return; // Prevent shooting between waves
 
+    // Melee (Melee class): không bắn đạn — chém vòng cung cleave + hút máu
+    if (this.player.isMelee) { this.meleeSwing(pointer); return; }
+
     const bulletSize = 4;
     const bullet = this.bullets.get(this.player.x, this.player.y);
 
@@ -774,6 +777,61 @@ export default class GameScene extends Phaser.Scene {
 
       this.lastFired = this.time.now + this.player.fireRate;
     }
+  }
+
+  // Melee: chém vòng cung — trúng MỌI zombie trong tầm & cung (cleave), kèm hút máu.
+  // Sát thương đi qua server (zombie_damaged) như đạn → mọi client thấy nhất quán.
+  meleeSwing(pointer) {
+    const p = this.player;
+    const aim = Phaser.Math.Angle.Between(p.x, p.y, pointer.worldX, pointer.worldY);
+    const halfArc = Phaser.Math.DegToRad(p.meleeArcDeg) / 2;
+    const reach = p.meleeRange;
+    let hits = 0;
+
+    this.zombies.getChildren().forEach(z => {
+      if (!z.active) return;
+      if (Phaser.Math.Distance.Between(p.x, p.y, z.x, z.y) > reach + 18) return;
+      const da = Phaser.Math.Angle.Wrap(Phaser.Math.Angle.Between(p.x, p.y, z.x, z.y) - aim);
+      if (Math.abs(da) > halfArc) return;
+      hits++;
+      store.socket.emit('zombie_damaged', {
+        roomCode: store.playerStats.roomCode, zombieId: z.id, damage: p.meleeDamage
+      });
+    });
+
+    // Hút máu — cap 2 mục tiêu/nhát để không overheal giữa đám đông
+    if (hits > 0) {
+      p.heal(Math.round(p.meleeDamage * p.lifesteal * Math.min(hits, 2)));
+      store.playerStats.hp = p.hp;
+    }
+
+    // Accuracy/telemetry: 1 nhát = 1 "phát"; trúng ≥1 quái = 1 "hit"
+    this.shotsFired++; this.actionsThisWave++; store.playerStats.shotsFired++;
+    if (hits > 0) { this.shotsHit++; store.playerStats.shotsHit++; }
+
+    // FX
+    p.swingFx();
+    this._meleeSlash(p.x, p.y, aim, reach, halfArc);
+    if (hits > 0) {
+      this.cameras.main.shake(60, 0.004);
+      if (!store.isMuted && this.cache.audio.exists('zombie_hit')) {
+        this.sound.play('zombie_hit', { volume: 0.22, detune: Phaser.Math.Between(-100, 100) });
+      }
+    }
+    this.lastFired = this.time.now + p.meleeRate;
+  }
+
+  // Vệt chém hình cung (local-only visual) — nở nhẹ rồi tan.
+  _meleeSlash(x, y, aim, reach, halfArc) {
+    const g = this.add.graphics({ x, y }).setDepth(42);
+    g.lineStyle(9, 0xff5544, 0.30);
+    g.beginPath(); g.arc(0, 0, reach * 0.92, aim - halfArc, aim + halfArc); g.strokePath();
+    g.lineStyle(3, 0xffffff, 0.9);
+    g.beginPath(); g.arc(0, 0, reach, aim - halfArc, aim + halfArc); g.strokePath();
+    this.tweens.add({
+      targets: g, alpha: 0, scaleX: 1.12, scaleY: 1.12, duration: 150,
+      onComplete: () => g.destroy()
+    });
   }
 
   update(time, delta) {

@@ -21,12 +21,14 @@ export function drawWeapon(g, cls, { active = false, muzzle = false } = {}) {
   g.clear();
   let tip;
   switch (cls) {
-    case 'melee': // shotgun nòng đôi đỏ + báng gỗ
-      g.fillStyle(0x3a2416, 1); g.fillRect(-4, -3, 8, 6);
-      g.fillStyle(0x6a1f17, 1); g.fillRect(4, -4.5, 22, 3.5); g.fillRect(4, 1, 22, 3.5);
-      g.fillStyle(0x3a120c, 1); g.fillRect(24, -4.5, 3, 9.5);
-      g.fillStyle(0xc0392b, 1); g.fillRect(8, -1, 12, 2);
-      hands(g, 20, 0x2a1a12); tip = 27; break;
+    case 'melee': // dao quắm bản rộng (cận chiến) — cán gỗ + lưỡi thép vát
+      g.fillStyle(0x3a2416, 1); g.fillRect(-4, -2, 16, 4);          // cán
+      g.fillStyle(0x241712, 1); g.fillRect(10, -2.5, 3, 5);        // chắn tay
+      g.fillStyle(0x8a929c, 1); g.fillRect(13, -7, 13, 14);        // lưỡi bản rộng
+      g.fillStyle(0xccd2d9, 1); g.fillRect(13, -7, 13, 3);         // ánh sáng sống lưỡi
+      g.fillStyle(0x6a7079, 1); g.fillTriangle(26, -7, 26, 7, 33, 1); // mũi vát
+      g.fillStyle(0x9aa3ad, 1); g.fillTriangle(13, 7, 26, 7, 26, 3);  // bụng lưỡi
+      hands(g, 7, 0x2a1a12); tip = 0; break;                        // melee không có muzzle
 
     case 'scientist': // súng ngắn accent lục y tế
       g.fillStyle(0x222a25, 1); g.fillRect(2, -2.5, 13, 5);

@@ -80,6 +80,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this._muzzleUntil = this.scene.time.now + 55;
   }
 
+  // Melee: kích animation vung vũ khí theo cung (gọi từ GameScene.meleeSwing()).
+  swingFx() { this._swingUntil = this.scene.time.now + 160; }
+
   update(time, delta) {
     if (!this.active) return;
     this.handleMovement();
@@ -151,7 +154,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const rc = this._recoil;
     // Body does NOT rotate — only weapon layer tracks the mouse
     this.weaponGraphics.setPosition(this.x - Math.cos(angle) * rc, this.y - Math.sin(angle) * rc);
-    this.weaponGraphics.setRotation(angle);
+    // Melee: trong lúc chém, quét vũ khí theo cung (-0.8 → +0.8 rad) quanh hướng ngắm
+    let drawAngle = angle;
+    if (this.isMelee && this.scene.time.now < (this._swingUntil || 0)) {
+      const t = 1 - (this._swingUntil - this.scene.time.now) / 160;
+      drawAngle = angle - 0.8 + 1.6 * t;
+    }
+    this.weaponGraphics.setRotation(drawAngle);
     // Ngắm sang trái → lật dọc để súng không bị lộn ngược (4 hướng hợp lý)
     this.weaponGraphics.scaleY = Math.abs(angle) > Math.PI / 2 ? -1 : 1;
     this._redrawWeapon();
@@ -214,10 +223,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.addBuff('Combat Stim');
     const origFireRate = this.fireRate;
     this.fireRate = Math.round(origFireRate * 0.6);
+    const origMelee = this.meleeRate;
+    if (this.isMelee) this.meleeRate = Math.round(origMelee * 0.6); // stim cũng tăng tốc chém
     this.setTint(0xffe066);
     this.scene.time.delayedCall(duration, () => {
       this.removeBuff('Combat Stim');
       this.fireRate = origFireRate;
+      if (this.isMelee) this.meleeRate = origMelee;
       this._stimActive = false;
       if (this.active) this.clearTint();
     });

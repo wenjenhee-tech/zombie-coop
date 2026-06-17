@@ -8,17 +8,17 @@ export class Ranged extends Player {
     this.className      = 'Ranged';
     this.playerClass    = 'ranged';
     this.color          = 0x3498db;
-    this.speed          = 210;
-    this.maxHp          = 80;
+    this.speed          = 200;
+    this.maxHp          = 85;
     this.hp             = this.maxHp;
-    this.damage         = 35;
-    this.fireRate       = 150;
+    this.damage         = 20;
+    this.fireRate       = 165;
     this.primaryCooldown   = 18000;
     this.secondaryCooldown = 25000;
     this.tertiaryCooldown  = 14000;
     this.piercingShots  = false;
     this.bulletSpeedMult = 1;
-    this.critChance     = 0.2; // Nội tại "Sát Thủ": 20% chí mạng ×2 dmg
+    this.critChance     = 0.15; // Nội tại "Sát Thủ": 15% chí mạng ×2 dmg
 
     // Sprite Gunner redesign ở 48px → hitbox khớp thân nhìn thấy (rộng 24, cao 34),
     // tự canh giữa frame. Chỉ đổi vùng va chạm, KHÔNG đổi speed/hp/damage.
@@ -82,10 +82,10 @@ export class Melee extends Player {
     this.className      = 'Melee';
     this.playerClass    = 'melee';
     this.color          = 0xe74c3c;
-    this.speed          = 150;
-    this.maxHp          = 150;
+    this.speed          = 155;
+    this.maxHp          = 160;
     this.hp             = this.maxHp;
-    this.damage         = 20;
+    this.damage         = 22;
     this.fireRate       = 200;
     this.primaryCooldown   = 22000;
     this.secondaryCooldown = 16000;
@@ -93,7 +93,16 @@ export class Melee extends Player {
     this.hitCount = 0;
     this.thornsRatio = 0.3; // Nội tại "Phản Đòn": dội 30% dmg về zombie tấn công
 
-    // Sprite Tank redesign 48px (to nặng) → hitbox khớp thân. Chỉ vùng va chạm.
+    // P1b-2: Melee THUẦN cận chiến — chém vòng cung (cleave) + hút máu, KHÔNG bắn đạn.
+    // (số liệu mirror balance-sim STATS.melee.cleave)
+    this.isMelee     = true;
+    this.meleeDamage = 48;   // sát thương mỗi nhát
+    this.meleeRate   = 500;  // ms giữa hai nhát
+    this.meleeRange  = 84;   // tầm với (px)
+    this.meleeArcDeg = 120;  // bề rộng vòng cung quét
+    this.lifesteal   = 0.25; // hồi máu = 25% sát thương gây ra (cap 2 mục tiêu/nhát)
+
+    // Sprite redesign 48px (to nặng) → hitbox khớp thân. Chỉ vùng va chạm.
     this.body.setSize(28, 34);
   }
 
@@ -156,11 +165,11 @@ export class Scientist extends Player {
     this.className      = 'Scientist';
     this.playerClass    = 'scientist';
     this.color          = 0x2ecc71;
-    this.speed          = 230;
-    this.maxHp          = 90;
+    this.speed          = 215;
+    this.maxHp          = 95;
     this.hp             = this.maxHp;
-    this.damage         = 15;
-    this.fireRate       = 180;
+    this.damage         = 18;
+    this.fireRate       = 160;
     this.primaryCooldown   = 20000;
     this.secondaryCooldown = 30000;
     this.tertiaryCooldown  = 22000;
@@ -225,10 +234,10 @@ export class Engineer extends Player {
     this.className      = 'Engineer';
     this.playerClass    = 'engineer';
     this.color          = 0xf39c12;
-    this.speed          = 230;
-    this.maxHp          = 85;
+    this.speed          = 210;
+    this.maxHp          = 95;
     this.hp             = this.maxHp;
-    this.damage         = 15;
+    this.damage         = 16;
     this.fireRate       = 150;
     this.primaryCooldown   = 20000;
     this.secondaryCooldown = 12000;
