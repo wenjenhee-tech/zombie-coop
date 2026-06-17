@@ -3,6 +3,7 @@ import { Gunner, Tank, Medic, Trapper } from '../entities/PlayerClasses';
 import Zombie from '../entities/Zombie';
 import { store } from '../../store';
 import { generateAllTextures, registerAnims } from '../PixelArtTextures';
+import { drawWeapon } from '../weapons';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -115,7 +116,7 @@ export default class GameScene extends Phaser.Scene {
       roomCode: store.playerStats.roomCode,
       x: this.player.x,
       y: this.player.y,
-      rotation: this.player.rotation,
+      rotation: this.player.aimAngle,
       velocityX: 0,
       velocityY: 0
     });
@@ -129,7 +130,7 @@ export default class GameScene extends Phaser.Scene {
             roomCode: store.playerStats.roomCode, 
             x: this.player.x, 
             y: this.player.y, 
-            rotation: this.player.rotation, 
+            rotation: this.player.aimAngle, 
             velocityX: this.player.body.velocity.x, 
             velocityY: this.player.body.velocity.y 
           });
@@ -164,6 +165,7 @@ export default class GameScene extends Phaser.Scene {
         const cls = (playerInfo?.class || 'Gunner').toLowerCase();
         other = this.add.sprite(data.x, data.y, `player_${cls}`);
         other.id = data.id;
+        other.weapon = this.add.graphics(); // layer vũ khí riêng, xoay theo aim của họ
         this.otherPlayers.add(other);
       }
       other.setPosition(data.x, data.y);
@@ -172,6 +174,7 @@ export default class GameScene extends Phaser.Scene {
       // đang bị ẩn (vì player_died trước đó thiếu player_revived khớp — reconnect
       // đổi socket.id, mất gói...), hiện lại để khỏi "vô hình nhưng vẫn bắn".
       if (!other.visible) other.setVisible(true);
+      this._updateOtherWeapon(other, data.x, data.y, data.rotation);
 
       // Play walk animation based on velocity
       const { velocityX: vx, velocityY: vy } = data;
@@ -196,6 +199,9 @@ export default class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: b, x: data.x + vx, y: data.y + vy, duration: 1000, onComplete: () => b.destroy() });
       // Tiếng súng đồng đội — nhỏ dần theo khoảng cách
       this.playSpatial('gunshot', data.x, data.y, 0.26, 120);
+      // Xoay vũ khí người bắn theo hướng + chớp lửa (cover cả khi họ đứng yên bắn)
+      const shooter = this.otherPlayers.getChildren().find(p => p.id === data.id);
+      if (shooter) this._updateOtherWeapon(shooter, data.x, data.y, data.angle, true);
     });
 
     store.socket.on('zombie_spawned', (data) => {
@@ -357,7 +363,7 @@ export default class GameScene extends Phaser.Scene {
       }
       
       const other = this.otherPlayers.getChildren().find(p => p.id === data.targetId);
-      if (other) other.setVisible(true);
+      if (other) { other.setVisible(true); if (other.weapon) other.weapon.setVisible(true); }
 
       if (data.targetId === store.socket.id) {
         // Bản thân được hồi sinh
@@ -420,7 +426,7 @@ export default class GameScene extends Phaser.Scene {
 
     store.socket.on('player_died', (data) => {
       const other = this.otherPlayers.getChildren().find(p => p.id === data.id);
-      if (other) other.setVisible(false);
+      if (other) { other.setVisible(false); if (other.weapon) other.weapon.setVisible(false); }
 
       // Server cho CHÍNH MÌNH chết (vd AFK quá 60s không chọn powerup) → vào spectator.
       // Không emit lại player_died (server đã khởi xướng).
@@ -444,6 +450,18 @@ export default class GameScene extends Phaser.Scene {
     if (vol < 0.02) return; // quá xa, không nghe được → bỏ (đỡ tốn voice)
     const detune = detuneBase + (detuneRange ? Phaser.Math.Between(-detuneRange, detuneRange) : 0);
     this.sound.play(key, { volume: vol, detune });
+  }
+
+  // ── Vũ khí của người chơi khác: đặt vị trí + xoay theo aim của họ + vẽ lại ──
+  _updateOtherWeapon(other, x, y, rotation, muzzle = false) {
+    if (!other.weapon) return;
+    other.weapon.setPosition(x, y);
+    if (rotation != null) {
+      other.weapon.setRotation(rotation);
+      other.weapon.scaleY = Math.abs(rotation) > Math.PI / 2 ? -1 : 1; // lật trái
+    }
+    other.weapon.setVisible(other.visible);
+    drawWeapon(other.weapon, other.texture.key.replace('player_', ''), { muzzle });
   }
 
   // ── Tiếng gầm ambient: định kỳ ~3s, chọn zombie sống GẦN NHẤT trong tầm nghe ──
@@ -777,7 +795,7 @@ export default class GameScene extends Phaser.Scene {
             roomCode: store.playerStats.roomCode,
             x: this.player.x,
             y: this.player.y,
-            rotation: this.player.rotation,
+            rotation: this.player.aimAngle,
             velocityX: this.player.body.velocity.x,
             velocityY: this.player.body.velocity.y
           });
@@ -789,7 +807,7 @@ export default class GameScene extends Phaser.Scene {
           roomCode: store.playerStats.roomCode, 
           x: this.player.x, 
           y: this.player.y, 
-          rotation: this.player.rotation, 
+          rotation: this.player.aimAngle, 
           velocityX: 0, 
           velocityY: 0 
         });

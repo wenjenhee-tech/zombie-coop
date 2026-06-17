@@ -25,23 +25,6 @@ export class Gunner extends Player {
     this.body.setSize(24, 34);
   }
 
-  _redrawWeapon() {
-    const g = this.weaponGraphics;
-    g.clear();
-    const on = this.hasBuff('Rain_Of_Bullets');
-    const body = on ? 0x2a4a6a : 0x1c2c3c;
-    const steel = on ? 0x3a6fa0 : 0x24465f;
-    const acc = on ? 0x46c8ff : 0x2a93d8;
-    // súng trường: báng + thân + hộp đạn + nòng dài + điểm ruồi xanh
-    g.fillStyle(0x12100d, 1); g.fillRect(-3, -2, 6, 4);
-    g.fillStyle(body, 1);     g.fillRect(0, -2.5, 22, 5);
-    g.fillStyle(steel, 1);    g.fillRect(9, 2, 5, 7);
-    g.fillStyle(steel, 1);    g.fillRect(22, -1.5, 12, 3);
-    g.fillStyle(acc, 1);      g.fillRect(6, -3.5, 9, 1.5);
-    this._drawHands(g, 24);
-    this._drawMuzzle(g, 34);
-  }
-
   usePrimarySkill() {
     this.addBuff('Rain_Of_Bullets');
     this.piercingShots   = true;
@@ -112,20 +95,6 @@ export class Tank extends Player {
 
     // Sprite Tank redesign 48px (to nặng) → hitbox khớp thân. Chỉ vùng va chạm.
     this.body.setSize(28, 34);
-  }
-
-  _redrawWeapon() {
-    const g = this.weaponGraphics;
-    g.clear();
-    // shotgun nòng đôi: báng gỗ + 2 nòng song song + band đỏ
-    g.fillStyle(0x3a2416, 1); g.fillRect(-4, -3, 8, 6);     // báng gỗ
-    g.fillStyle(0x6a1f17, 1);
-    g.fillRect(4, -4.5, 22, 3.5);                            // nòng trên
-    g.fillRect(4, 1, 22, 3.5);                               // nòng dưới
-    g.fillStyle(0x3a120c, 1); g.fillRect(24, -4.5, 3, 9.5);  // miệng nòng
-    g.fillStyle(0xc0392b, 1); g.fillRect(8, -1, 12, 2);      // band đỏ
-    this._drawHands(g, 20, 0x2a1a12);
-    this._drawMuzzle(g, 27);
   }
 
   usePrimarySkill() {
@@ -199,19 +168,6 @@ export class Medic extends Player {
     this.body.setSize(24, 34); // sprite 48px → hitbox khớp thân
   }
 
-  _redrawWeapon() {
-    const g = this.weaponGraphics;
-    g.clear();
-    // súng ngắn (pistol) accent lục y tế: thân + báng chúc + nòng + điểm ngắm lục
-    g.fillStyle(0x222a25, 1); g.fillRect(2, -2.5, 13, 5);   // thân
-    g.fillStyle(0x161c18, 1); g.fillRect(3, 2, 4, 7);       // báng cầm
-    g.fillStyle(0x33403a, 1); g.fillRect(15, -1.5, 6, 3);   // nòng
-    g.fillStyle(0x2ecc71, 1); g.fillRect(5, -3.5, 5, 1.5);  // điểm ngắm lục
-    g.fillStyle(0x2ecc71, 1); g.fillCircle(11, 0, 1.4);     // chấm lục
-    this._drawHands(g, 13, 0x1d3a2a);                        // 2 tay cụp gần
-    this._drawMuzzle(g, 21);
-  }
-
   usePrimarySkill() {
     this.heal(30);
     store.socket.emit('heal_aoe', {
@@ -279,20 +235,6 @@ export class Trapper extends Player {
     this.tertiaryCooldown  = 15000;
 
     this.body.setSize(24, 34); // sprite 48px → hitbox khớp thân
-  }
-
-  _redrawWeapon() {
-    const g = this.weaponGraphics;
-    g.clear();
-    // nỏ: rail thân + cánh nỏ (thanh dọc) + dây cung + mũi bolt cam
-    g.fillStyle(0x4a3a14, 1); g.fillRect(-2, -2, 20, 4);    // rail/thân
-    g.lineStyle(2.5, 0x6a4a18, 1); g.lineBetween(14, -8, 14, 8); // cánh nỏ
-    g.lineStyle(1, 0xccb98a, 1);
-    g.lineBetween(14, -8, 4, 0); g.lineBetween(14, 8, 4, 0);     // dây cung
-    g.fillStyle(0xe67e22, 1); g.fillRect(4, -1, 22, 2);          // thân bolt
-    g.fillStyle(0xf39c12, 1); g.fillTriangle(26, -2.5, 26, 2.5, 31, 0); // đầu mũi
-    this._drawHands(g, 16, 0x3a2810);
-    this._drawMuzzle(g, 31);
   }
 
   usePrimarySkill() {
