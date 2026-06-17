@@ -98,7 +98,18 @@ const scoreSchema = new mongoose.Schema({
 const Score = mongoose.model('Score', scoreSchema, 'scores');
 
 // Active rooms in memory for fast socket broadcasting
-const activeRooms = {}; 
+const activeRooms = {};
+
+// --- DIRECTOR & PACING CONFIG (chỉnh cảm giác độ khó tại đây) ---
+// Độ gắt "Vừa": thưởng/phạt rõ nhưng không tàn nhẫn (~±28%).
+const DIRECTOR = {
+  SPEED_MIN: 0.85, SPEED_MAX: 1.28,  // biên zombieSpeedMultiplier
+  ELITE_MAX: 0.28,                   // tỉ lệ elite tối đa khi người chơi mạnh
+  SMOOTH: 0.6,                       // EMA: 0=giữ nguyên, 1=nhảy thẳng tới target
+  ACC_BASELINE: 0.45,                // accuracy mốc "ổn"
+  FAST_CLEAR: 25, SLOW_CLEAR: 60     // giây: dưới=mạnh (gắt thêm), trên=đuối (nới ra)
+};
+const SPAWN_LULL_MS = 3500;          // nghỉ ngắn giữa các đợt trong 1 wave
 
 // Map Templates — bản đồ có cấu trúc chiến thuật
 function generateMapLayout() {
@@ -183,6 +194,40 @@ function generateMapLayout() {
   return walls;
 }
 
+// Heuristic Director: từ telemetry wave vừa xong → param độ khó wave kế.
+// Thay cho ML service (vốn cần AI_SERVICE_URL). Mạnh → gắt hơn, đuối → dễ lại; EMA cho mượt.
+function computeDirector(prev, tele) {
+  const p = prev || { zombieSpeedMultiplier: 1, eliteSpawnChance: 0 };
+  let perf = (tele.avgAccuracy - DIRECTOR.ACC_BASELINE) * 1.2;
+  if (tele.clearTime < DIRECTOR.FAST_CLEAR) perf += 0.35;
+  else if (tele.clearTime > DIRECTOR.SLOW_CLEAR) perf -= 0.35;
+  perf = Math.max(-1, Math.min(1, perf)); // [-1,1]: >0 chơi tốt, <0 đang đuối
+
+  const targetSpeed = 1 + perf * 0.28;
+  const targetElite = perf > 0 ? perf * DIRECTOR.ELITE_MAX : 0;
+  const s = DIRECTOR.SMOOTH;
+  const lerp = (a, b) => a + (b - a) * s;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  const r2 = v => Math.round(v * 100) / 100;
+  return {
+    zombieSpeedMultiplier: r2(clamp(lerp(p.zombieSpeedMultiplier, targetSpeed), DIRECTOR.SPEED_MIN, DIRECTOR.SPEED_MAX)),
+    eliteSpawnChance: r2(clamp(lerp(p.eliteSpawnChance, targetElite), 0, DIRECTOR.ELITE_MAX))
+  };
+}
+
+// Chia tổng zombie của wave thành các "đợt" tăng dần (đợt cuối dồn dập nhất = peak rush).
+function buildBursts(total, wave) {
+  if (total <= 3) return [total];
+  const n = wave < 3 ? 2 : wave < 7 ? 3 : 4;
+  const weights = [];
+  for (let i = 0; i < n; i++) weights.push(1 + i * 0.45); // càng về cuối càng nặng
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const counts = weights.map(w => Math.max(1, Math.round(total * w / sum)));
+  const diff = total - counts.reduce((a, b) => a + b, 0);
+  counts[counts.length - 1] = Math.max(1, counts[counts.length - 1] + diff); // dồn dư vào đợt peak
+  return counts;
+}
+
 // Khởi tạo state spawn cho 1 wave (dùng chung bởi host_ready_to_spawn & start_next_wave)
 function initWave(room) {
   const playerCount = room.players.filter(p => p.isAlive).length || 1;
@@ -191,6 +236,11 @@ function initWave(room) {
   room.isWaveActive = true;
   room.zombiesToSpawn = isBossWave ? 1 : Math.floor(baseCount * (0.5 + playerCount * 0.5));
   room.zombiesSpawned = 0;
+  // Pacing "làn sóng": chia thành đợt + lull ngắn giữa các đợt
+  room.spawnBursts = buildBursts(room.zombiesToSpawn, room.currentWave);
+  room.spawnBurstIdx = 0;
+  room.spawnedInBurst = 0;
+  room.lullUntil = 0;
   room.zombies = {};
   room.lastSpawnTime = Date.now();
   room.waveStartTime = Date.now();
@@ -411,6 +461,7 @@ io.on('connection', (socket) => {
       room.currentWave = 1;
       room.gameStartTime = Date.now();
       room.waveStartTime = Date.now();
+      room.difficultyParams = { zombieSpeedMultiplier: 1, eliteSpawnChance: 0 }; // Director sẽ điều chỉnh sau mỗi wave
       room.telemetry = { shotsFired: 0, shotsHit: 0, actionCount: 0 };
       room.players.forEach(p => { p.kills = 0; p.score = 0; });
       
@@ -708,11 +759,16 @@ setInterval(() => {
 
     if (room.status !== 'playing' || !room.isWaveActive) continue;
 
-    // 1. Spawning Logic
-    if (room.zombiesSpawned < room.zombiesToSpawn && now - (room.lastSpawnTime || 0) > 1500) {
+    // 1. Spawning Logic — pacing "làn sóng": đợt dồn dập + lull ngắn giữa các đợt
+    const bursts = room.spawnBursts || [room.zombiesToSpawn];
+    const burstQuota = bursts[room.spawnBurstIdx || 0] || 0;
+    const burstInterval = Math.max(280, 700 - (room.spawnBurstIdx || 0) * 130); // đợt sau dồn nhanh hơn (build-up → peak)
+    const inLull = now < (room.lullUntil || 0);
+    if (room.zombiesSpawned < room.zombiesToSpawn && !inLull && now - (room.lastSpawnTime || 0) > burstInterval) {
       room.lastSpawnTime = now;
       room.zombiesSpawned++;
-      
+      room.spawnedInBurst = (room.spawnedInBurst || 0) + 1;
+
       const margin = 50;
       const mapSize = 1600;
       const isHorizontal = Math.random() < 0.5;
@@ -764,6 +820,13 @@ setInterval(() => {
         y: y,
         hp: HP_TABLE[type] || 30
       });
+
+      // Hết quota đợt này → sang đợt kế + nghỉ ngắn (lull) cho người chơi thở
+      if (room.spawnedInBurst >= burstQuota && room.zombiesSpawned < room.zombiesToSpawn) {
+        room.spawnBurstIdx = (room.spawnBurstIdx || 0) + 1;
+        room.spawnedInBurst = 0;
+        room.lullUntil = now + SPAWN_LULL_MS;
+      }
     }
 
     // 2. Movement Logic (đuổi theo người chơi gần nhất, có honor effect/taunt)
@@ -942,7 +1005,12 @@ setInterval(() => {
       Telemetry.create({ roomCode: code, wave, apm, avgAccuracy, hpLossRate, clearTime: clearTimeSec })
         .catch(e => console.error('Telemetry save error:', e));
 
-      // Fetch AI difficulty based on new telemetry (chỉ khi AI_SERVICE_URL được cấu hình)
+      // Director heuristic (mặc định, luôn chạy) — điều chỉnh độ khó wave kế từ telemetry vừa tính.
+      room.difficultyParams = computeDirector(room.difficultyParams, { avgAccuracy, clearTime: clearTimeSec });
+      io.to(code).emit('difficulty_update', room.difficultyParams);
+      console.log(`🎚️  [${code}] wave ${wave} cleared in ${clearTimeSec}s acc=${(avgAccuracy*100).toFixed(0)}% → speed×${room.difficultyParams.zombieSpeedMultiplier} elite=${room.difficultyParams.eliteSpawnChance}`);
+
+      // Override bằng AI service nếu được cấu hình (AI_SERVICE_URL) — không bắt buộc.
       if (AI_SERVICE_URL) {
         fetch(`${AI_SERVICE_URL}/predict`, {
           method: 'POST',
