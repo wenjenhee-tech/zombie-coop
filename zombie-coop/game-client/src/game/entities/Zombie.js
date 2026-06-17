@@ -16,7 +16,8 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
     // (display = 48×scale = size; hitbox = 48×scale = size).
     const TEX = 48;
     this.body.setSize(TEX, TEX);
-    this.setScale(this.size / TEX);
+    this._baseScale = this.size / TEX;
+    this.setScale(this._baseScale);
 
     this.target = null;
     this.activeEffects = [];
@@ -159,7 +160,20 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
     } else {
       this.setTint(0xffffff);
       this.scene.time.delayedCall(100, () => { if (this.active) this.clearTint(); });
+      this._hitPop();
     }
+  }
+
+  // Squash nhẹ khi trúng đạn — cảm giác "chắc đòn" mà không dịch chuyển thân
+  // (vị trí do server đồng bộ, nên chỉ đụng scale, không đụng x/y).
+  _hitPop() {
+    if (this._popping) return;
+    this._popping = true;
+    this.scene.tweens.add({
+      targets: this, scaleX: this._baseScale * 1.18, scaleY: this._baseScale * 0.86,
+      duration: 60, yoyo: true, ease: 'Quad.easeOut',
+      onComplete: () => { this._popping = false; if (this.active) this.setScale(this._baseScale); }
+    });
   }
 
   applyEffect(effectName, duration) {
@@ -173,5 +187,18 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
 
   hasEffect(effectName) { return this.activeEffects.includes(effectName); }
 
-  die() { this.destroy(); }
+  die() {
+    if (!this.active) { this.destroy(); return; }
+    // Tắt logic + va chạm ngay (handler check !active để đếm kill), rồi poof xác.
+    this.setActive(false);
+    if (this.body) this.body.enable = false;
+    this.anims.stop();
+    this.setVelocity?.(0, 0);
+    this.setTint(0x991111);
+    this.scene.tweens.add({
+      targets: this, scaleX: 0, scaleY: 0, alpha: 0, angle: this.angle + 180,
+      duration: 220, ease: 'Quad.easeIn',
+      onComplete: () => this.destroy()
+    });
+  }
 }

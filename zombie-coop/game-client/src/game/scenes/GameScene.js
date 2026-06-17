@@ -29,6 +29,10 @@ export default class GameScene extends Phaser.Scene {
     bg.clear();
     bg.fillStyle(0xffaa00, 1); bg.fillCircle(4, 4, 4);
     bg.generateTexture('bullet_fire', 8, 8);
+    bg.clear();
+    // Hạt máu (death burst) + tia lửa (muzzle/impact) — texture nhỏ tái dùng cho particle
+    bg.fillStyle(0xffffff, 1); bg.fillCircle(3, 3, 3);
+    bg.generateTexture('fx_dot', 6, 6);
     bg.destroy();
 
     // Set world bounds to 3200x3200
@@ -230,8 +234,10 @@ export default class GameScene extends Phaser.Scene {
     store.socket.on('zombie_took_damage', (data) => {
       const zombie = this.zombies.getChildren().find(z => z.id === data.zombieId);
       if (zombie) {
+        const zx = zombie.x, zy = zombie.y, zcolor = zombie.color || 0x8b0000;
         zombie.takeDamage(data.damage);
-        
+        this._damageNumber(zx, zy, data.damage);
+
         // Rate-limit để tránh spam âm thanh khi nhiều người bắn cùng lúc
         if (this.time.now > (this._lastHitSfx || 0) + 80) {
           this.playSpatial('zombie_hit', zombie.x, zombie.y, 0.35, 250, 300); // grunt cao
@@ -239,7 +245,8 @@ export default class GameScene extends Phaser.Scene {
         }
 
         if (!zombie.active) {
-          this.playSpatial('zombie_die', zombie.x, zombie.y, 0.6, 120, -250); // groan trầm
+          this.playSpatial('zombie_die', zx, zy, 0.6, 120, -250); // groan trầm
+          this._bloodBurst(zx, zy, zcolor);
           store.playerStats.kills++;
           store.playerStats.score += zombie.maxHp * 2;
           store.remainingZombies = this.zombies.getChildren().filter(z => z.active).length;
@@ -402,6 +409,7 @@ export default class GameScene extends Phaser.Scene {
       ring.fillStyle(isFreeze ? 0x00ffff : 0xe67e22, 0.5);
       ring.fillCircle(x, y, radius);
       this.time.delayedCall(250, () => ring.destroy());
+      if (!isFreeze) this._shakeAt(x, y, 0.016, 500); // mìn nổ rung, mìn băng thì không
     });
 
     // Exploder nổ server-side: render visual + áp damage nếu player trong vùng nổ
@@ -410,6 +418,8 @@ export default class GameScene extends Phaser.Scene {
       ring.fillStyle(0x8e44ad, 0.6);
       ring.fillCircle(data.x, data.y, data.radius);
       this.time.delayedCall(300, () => ring.destroy());
+      this._bloodBurst(data.x, data.y, 0x8e44ad);
+      this._shakeAt(data.x, data.y, 0.022, 600, 300); // nổ to → rung mạnh hơn
 
       if (this.player && this.player.active) {
         const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, data.x, data.y);
@@ -737,6 +747,7 @@ export default class GameScene extends Phaser.Scene {
         this.sound.play('gunshot', { volume: 0.3, detune: Phaser.Math.Between(-120, 120) });
       }
       this.player.fireFx(); // recoil + chớp lửa đầu nòng
+      this.cameras.main.shake(45, 0.0016); // giật nhẹ camera mỗi phát
 
       // Auto destroy bullet after 2 seconds
       this.time.delayedCall(2000, () => {
@@ -837,6 +848,41 @@ export default class GameScene extends Phaser.Scene {
 
   // Removed getWaveConfig, startWave, spawnZombie
 
+  // Số sát thương bay lên — màu/cỡ tăng theo lượng damage (juiciness).
+  _damageNumber(x, y, amount) {
+    const dmg = Math.round(amount);
+    const big = dmg >= 60;
+    const color = big ? '#ffd23a' : dmg >= 30 ? '#ffae42' : '#ffffff';
+    const t = this.add.text(x + Phaser.Math.Between(-6, 6), y - 14, `${dmg}`, {
+      fontSize: big ? '18px' : '13px', fontStyle: 'bold', fill: color,
+      stroke: '#000000', strokeThickness: 3
+    }).setOrigin(0.5).setDepth(60);
+    this.tweens.add({
+      targets: t, y: y - 40, alpha: 0, duration: 480, ease: 'Cubic.easeOut',
+      onComplete: () => t.destroy()
+    });
+  }
+
+  // Rung camera theo khoảng cách tới điểm nổ (gần rung mạnh, xa hầu như không).
+  _shakeAt(x, y, baseIntensity = 0.01, maxDist = 500, duration = 220) {
+    if (!this.player) return;
+    const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y);
+    const f = Math.max(0, 1 - d / maxDist);
+    if (f > 0.05) this.cameras.main.shake(duration, baseIntensity * f);
+  }
+
+  // Vụ nổ hạt máu khi zombie chết. color = màu zombie (đỏ/tím/...).
+  _bloodBurst(x, y, color = 0x8b0000) {
+    const p = this.add.particles(x, y, 'fx_dot', {
+      speed: { min: 60, max: 180 }, angle: { min: 0, max: 360 },
+      scale: { start: 1.1, end: 0 }, lifespan: { min: 180, max: 360 },
+      quantity: 10, tint: color, blendMode: 'NORMAL', emitting: false
+    });
+    p.setDepth(55);
+    p.explode(10);
+    this.time.delayedCall(420, () => p.destroy());
+  }
+
   handleBulletHitZombie(bullet, zombie) {
     if (bullet.active && zombie.active) {
       
@@ -846,12 +892,10 @@ export default class GameScene extends Phaser.Scene {
         bullet.setVisible(false);
       }
       
-      // Nội tại "Sát Thủ" (Gunner): chí mạng ×2 dmg
+      // Nội tại "Sát Thủ" (Gunner): chí mạng ×2 dmg (số dmg lớn hiện qua _damageNumber)
       let dmg = bullet.damage || 15;
       if (Math.random() < (this.player.critChance || 0)) {
         dmg *= 2;
-        const t = this.add.text(zombie.x, zombie.y - 24, 'CRIT!', { fontSize: '13px', fill: '#ffdd33', fontStyle: 'bold' });
-        this.time.delayedCall(500, () => t.destroy());
       }
 
       // Chỉ gửi lên server — server sẽ broadcast zombie_took_damage về cho tất cả
