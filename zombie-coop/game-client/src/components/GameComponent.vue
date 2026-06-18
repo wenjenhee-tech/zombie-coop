@@ -94,7 +94,7 @@ let game = null;
 const CLASS_SKILLS = {
   Ranged:  [
     { key: 'Q', name: 'Mưa Đạn',    passive: false },
-    { key: 'Passive', name: 'Adrenaline', passive: true },
+    { key: 'E', name: 'Lăn Né',     passive: false },
     { key: 'R', name: 'Lựu Đạn Cụm', passive: false }
   ],
   Melee:    [

@@ -1053,6 +1053,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   handleZombieHitPlayer(player, zombie) {
+    if (player._invuln) return; // Lăn Né: xuyên qua zombie, không dmg/không knockback
     if (!player.lastHit || this.time.now > player.lastHit + 1000) {
       player.takeDamage(zombie.damage);
       store.playerStats.hp = player.hp;

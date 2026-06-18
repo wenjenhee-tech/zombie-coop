@@ -90,6 +90,7 @@ function effHP(key) {
   let m = 1;
   if (key === 'melee') m = 1.6;     // block đòn-thứ-5 + Khiên Thép + hút máu
   if (key === 'scientist') m = 1.2; // Hào Quang hồi + Auto-Defib
+  if (key === 'ranged') m = 1.15;   // Lăn Né (i-frame dodge) né burst sát thương
   return Math.round(s.hp * m);
 }
 

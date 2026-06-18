@@ -14,7 +14,7 @@ export class Ranged extends Player {
     this.damage         = 20;
     this.fireRate       = 165;
     this.primaryCooldown   = 18000;
-    this.secondaryCooldown = 25000;
+    this.secondaryCooldown = 6000;  // E "Lăn Né"
     this.tertiaryCooldown  = 14000;
     this.piercingShots  = false;
     this.bulletSpeedMult = 1;
@@ -40,6 +40,33 @@ export class Ranged extends Player {
     });
   }
 
+  // Active "Lăn Né" (E) — lăn nhanh theo hướng đang đi (hoặc hướng ngắm nếu đứng yên),
+  // bất tử khung hình suốt cú lăn + thêm chút đệm. Cơ động thuần, không sát thương.
+  useSecondarySkill() {
+    if (this._rolling) return;
+    const c = this.cursors;
+    let dx = 0, dy = 0;
+    if (c.left.isDown) dx = -1; else if (c.right.isDown) dx = 1;
+    if (c.up.isDown)   dy = -1; else if (c.down.isDown)  dy = 1;
+    if (dx === 0 && dy === 0) { dx = Math.cos(this.aimAngle || 0); dy = Math.sin(this.aimAngle || 0); }
+    const v = new Phaser.Math.Vector2(dx, dy).normalize();
+
+    const ROLL_SPEED = 620, ROLL_MS = 220, IFRAME_PAD = 90;
+    this._rolling = true;
+    this._invuln  = true;
+    this._rollVx  = v.x * ROLL_SPEED;
+    this._rollVy  = v.y * ROLL_SPEED;
+    this.setAlpha(0.55);
+
+    this.scene.time.delayedCall(ROLL_MS, () => {
+      this._rolling = false; this._rollVx = 0; this._rollVy = 0;
+    });
+    this.scene.time.delayedCall(ROLL_MS + IFRAME_PAD, () => {
+      this._invuln = false;
+      if (this.active) this.setAlpha(1);
+    });
+  }
+
   // Active "Lựu Đạn Cụm" (R) — ném lựu đạn về phía chuột, nổ AoE bán kính 140, 60 dmg.
   useTertiarySkill() {
     const p = this.scene.input.activePointer;
@@ -60,11 +87,13 @@ export class Ranged extends Player {
   }
 
   passiveTick(time) {
+    // Nội tại "Adrenaline" — máu ≤30% tự buff tốc bắn. Cooldown RIÊNG (không còn dùng
+    // chung slot E vì E giờ là "Lăn Né").
     const isLowHp = this.hp <= this.maxHp * 0.3;
-    const isReady = time > this.lastSecondaryUsed + this.secondaryCooldown;
+    const isReady = time > (this._lastAdrenaline || 0) + 25000;
 
     if (isLowHp && isReady && !this.hasBuff('Adrenaline_Rush')) {
-      this.lastSecondaryUsed = time;
+      this._lastAdrenaline = time;
       this.addBuff('Adrenaline_Rush');
       const orig = this.fireRate;
       this.fireRate = orig * 0.6;

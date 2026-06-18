@@ -116,6 +116,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   handleMovement() {
+    // Lăn Né: trong lúc lăn, khoá điều khiển — giữ vận tốc lăn cố định.
+    if (this._rolling) { this.setVelocity(this._rollVx, this._rollVy); return; }
+
     let vx = 0, vy = 0;
     if (this.cursors.left.isDown)  vx = -1;
     else if (this.cursors.right.isDown) vx = 1;
@@ -168,6 +171,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   takeDamage(amount) {
+    if (this._invuln) return; // Lăn Né (Ranged): bất tử khung hình khi đang lăn
     amount *= (1 - this.getBuffValue('Iron Skin'));
 
     this.hp -= amount;
