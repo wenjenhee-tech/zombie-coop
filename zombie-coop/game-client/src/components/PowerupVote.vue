@@ -30,6 +30,11 @@
         <div class="tags">
           <span class="tag" :class="'tier-' + option.tier">Hạng {{ option.tier }}</span>
           <span v-if="option.isClassBonus" class="tag class-tag">{{ option.bonusText }}</span>
+          <span
+            v-if="option.maxStacks"
+            class="tag stack-tag"
+            :class="{ maxed: stackOf(option) >= option.maxStacks }"
+          >{{ stackOf(option) >= option.maxStacks ? '✓ ĐÃ MAX' : `Lv ${stackOf(option)}/${option.maxStacks}` }}</span>
         </div>
         
         <div v-if="store.pendingBuffId === option.id" class="picked-check">
@@ -49,6 +54,9 @@ const alivePlayers = computed(() =>
   store.teammates.filter(t => t?.isAlive).length + (store.playerStats.isAlive ? 1 : 0)
 );
 const totalPlayers = computed(() => store.teammates.length + 1);
+
+// Cấp stack hiện tại của buff tương ứng option (đọc từ store, GameScene đồng bộ mỗi frame).
+const stackOf = (opt) => store.playerStats.buffStacks?.[opt.name] || 0;
 
 // Chọn xong → báo server + rời màn chọn ngay, về arena chờ đồng đội (banner trong HUD).
 const selectCard = (option) => {
@@ -213,6 +221,14 @@ const getIcon = (tier) => {
 .class-tag {
   background-color: #e3f2fd;
   color: #1565c0;
+}
+.stack-tag {
+  background-color: #ede7f6;
+  color: #5e35b1;
+}
+.stack-tag.maxed {
+  background-color: #424242;
+  color: #ffca28;
 }
 
 .picked-check {

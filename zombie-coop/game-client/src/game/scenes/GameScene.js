@@ -833,7 +833,9 @@ export default class GameScene extends Phaser.Scene {
         isFireAmmo: this.player.hasBuff('Fire Ammo')
       });
 
-      this.lastFired = this.time.now + this.player.fireRate * (1 - this.player.getBuffValue('Overcharge'));
+      this.lastFired = this.time.now + this.player.fireRate
+        * (1 - this.player.getBuffValue('Overcharge'))   // pylon Engineer
+        * (1 - this.player.getBuffValue('Rapid Fire'));  // powerup (stack-cap 0.50)
     }
   }
 
@@ -876,7 +878,9 @@ export default class GameScene extends Phaser.Scene {
         this.sound.play('zombie_hit', { volume: 0.22, detune: Phaser.Math.Between(-100, 100) });
       }
     }
-    this.lastFired = this.time.now + p.meleeRate * (1 - p.getBuffValue('Overcharge'));
+    this.lastFired = this.time.now + p.meleeRate
+      * (1 - p.getBuffValue('Overcharge'))
+      * (1 - p.getBuffValue('Rapid Fire'));
   }
 
   // Vệt chém hình cung (local-only visual) — nở nhẹ rồi tan.
@@ -901,7 +905,8 @@ export default class GameScene extends Phaser.Scene {
       // Sync HP and Cooldowns to Vue Store
       store.playerStats.hp = this.player.hp;
       store.playerStats.maxHp = this.player.maxHp;
-      
+      store.playerStats.buffStacks = { ...this.player.activeBuffs }; // cho vote card hiện cấp stack/MAX
+
       const primaryDiff = time - this.player.lastPrimaryUsed;
       store.playerStats.primaryCDReadyRatio = Math.min(1, primaryDiff / this.player.primaryCooldown);
       store.playerStats.primaryCooldownMs = this.player.primaryCooldown;

@@ -24,7 +24,8 @@ export const store = reactive({
     secondaryCDReadyRatio: 1,
     tertiaryCDReadyRatio: 1,
     shotsFired: 0,
-    shotsHit: 0
+    shotsHit: 0,
+    buffStacks: {}   // {buffId: stackCount} — đồng bộ mỗi frame để vote card hiện cấp stack
   },
   
   pendingBuffId: null,

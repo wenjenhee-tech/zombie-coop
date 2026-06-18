@@ -1149,13 +1149,16 @@ setInterval(() => {
         .catch(e => console.warn('AI service unavailable, using default difficulty'));
       }
 
+      // Pool powerup. `name` PHẢI khớp key BUFF_INCREMENTS bên client (addBuff dùng name).
+      // maxStacks: số trần stack để vote card hiện "Lv x/n"/"ĐÃ MAX" (null = tiêu hao, luôn hữu ích).
+      // cat: off|def|util (phân loại hiển thị). sig: chỉ class này thấy (signature) — P2-3.
       const POWERUP_POOL = [
-        { id: 'speed_boost', name: 'Speed Boost', desc: '+20% tốc độ di chuyển', tier: 1 },
-        { id: 'fire_ammo', name: 'Fire Ammo', desc: 'Đạn gây damage theo thời gian', tier: 2, isClassBonus: true, bonusText: '+15% Ranged' },
-        { id: 'iron_skin', name: 'Iron Skin', desc: 'Giảm 20% damage nhận vào', tier: 2 },
-        { id: 'regen_aura', name: 'Regen Aura', desc: 'Tự hồi 1HP/giây khi không bị tấn công', tier: 1 },
-        { id: 'rapid_fire', name: 'Rapid Fire', desc: '+25% tốc độ bắn', tier: 2 },
-        { id: 'medkit_surge', name: 'Medkit Surge', desc: 'Hồi phục 20HP ngay lập tức', tier: 1 }
+        { id: 'speed_boost',  name: 'Speed Boost',  desc: '+20% tốc độ di chuyển',                 tier: 1, cat: 'util', maxStacks: 3 },
+        { id: 'regen_aura',   name: 'Regen Aura',   desc: 'Tự hồi 1HP/giây khi không bị tấn công', tier: 1, cat: 'def',  maxStacks: 3 },
+        { id: 'medkit_surge', name: 'Medkit Surge', desc: 'Hồi phục 20HP ngay lập tức',            tier: 1, cat: 'def',  maxStacks: null },
+        { id: 'iron_skin',    name: 'Iron Skin',    desc: 'Giảm 25% damage nhận vào',              tier: 2, cat: 'def',  maxStacks: 3 },
+        { id: 'rapid_fire',   name: 'Rapid Fire',   desc: '+25% tốc độ bắn / chém',                tier: 2, cat: 'off',  maxStacks: 3 },
+        { id: 'fire_ammo',    name: 'Fire Ammo',    desc: 'Đạn gây cháy theo thời gian',           tier: 2, cat: 'off',  maxStacks: 1 },
       ];
 
       const CLASS_PREFERRED = {
@@ -1165,16 +1168,27 @@ setInterval(() => {
         engineer:  ['speed_boost', 'iron_skin'],
       };
 
+      // Trọng số theo tier: tier cao càng hiếm. Ưu tiên class nhân thêm.
+      const TIER_WEIGHT = { 1: 3, 2: 2, 3: 1 };
+
       function getPersonalizedOptions(playerClass) {
         const cls = (playerClass || '').toLowerCase();
         const preferred = CLASS_PREFERRED[cls] || [];
-        const shuffled  = [...POWERUP_POOL].sort(() => Math.random() - 0.5);
-        // Move preferred buffs to front
-        shuffled.sort((a, b) => {
-          const ap = preferred.includes(a.id), bp = preferred.includes(b.id);
-          return ap === bp ? 0 : ap ? -1 : 1;
-        });
-        return shuffled.slice(0, 3);
+        // Lọc signature: chỉ giữ powerup không-signature hoặc đúng class của người này.
+        const bag = POWERUP_POOL
+          .filter(p => !p.sig || p.sig === cls)
+          .map(p => ({ p, w: (TIER_WEIGHT[p.tier] || 1) * (preferred.includes(p.id) ? 2.2 : 1) }));
+
+        const picks = [];
+        while (picks.length < 3 && bag.length) {
+          const total = bag.reduce((s, x) => s + x.w, 0);
+          let r = Math.random() * total, idx = 0;
+          for (; idx < bag.length - 1; idx++) { r -= bag[idx].w; if (r <= 0) break; }
+          const chosen = bag.splice(idx, 1)[0].p;
+          const isPref = preferred.includes(chosen.id);
+          picks.push({ ...chosen, isClassBonus: isPref, bonusText: isPref ? `Ưu tiên ${playerClass}` : undefined });
+        }
+        return picks;
       }
 
       // Mở intermission do server lái: theo dõi ai đã chọn powerup, đếm ngược 5s
