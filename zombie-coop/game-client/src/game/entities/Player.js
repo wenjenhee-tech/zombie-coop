@@ -2,14 +2,25 @@ import Phaser from 'phaser';
 import { drawWeapon } from '../weapons';
 
 const BUFF_INCREMENTS = {
-  'Speed Boost': [0.20, 0.10, 0.05],
-  'Iron Skin':   [0.25, 0.15, 0.05],
-  'Fire Ammo':   [1, 1, 1],
-  'Regen Aura':  [1.0, 0.5, 0.25],   // HP/s per stack
-  'Rapid Fire':  [0.25, 0.15, 0.10],  // fire-rate multiplier per stack
-  'Medkit Surge':[20,   15,   10],     // immediate HP per stack
-  'Combat Stim': [0.20],               // +20% tốc chạy (Medic Liều Kích Thích)
-  'Overcharge':  [0.30]                // +30% tốc bắn (Engineer Tháp Khuếch Đại) — nhân vào fireRate
+  // ── Lớp chung ──────────────────────────────────────────────────────────────
+  'Speed Boost':    [0.20, 0.10, 0.05],  // % tốc độ di chuyển
+  'Regen Aura':     [1.0,  0.5,  0.25],  // HP/s khi không bị hit
+  'Medkit Surge':   [20,   15,   10],    // HP hồi ngay
+  'Max HP':         [20,   15,   10],    // +maxHp (và hồi ngay bằng số đó)
+  'Iron Skin':      [0.25, 0.15, 0.05],  // % giảm dmg nhận vào
+  'Rapid Fire':     [0.25, 0.15, 0.10],  // % tăng tốc bắn (nhân vào interval)
+  'Sharpshooter':   [0.15, 0.10, 0.05],  // % tăng sát thương gây ra
+  'Cool Down':      [0.15, 0.10, 0.05],  // % giảm hồi chiêu kỹ năng
+  'Fire Ammo':      [1],                  // bật cháy (hasBuff — 1 stack)
+  // Piercing Round: không cần entry (dùng hasBuff, không cần getBuffValue)
+  // ── Signature theo class ───────────────────────────────────────────────────
+  'Crit Surge':     [0.10, 0.10, 0.10],  // +crit% (Ranged)
+  'Bloodthirst':    [0.10, 0.10],         // +lifesteal% (Melee)
+  'Plague Doctor':  [50,   50],           // +px bán kính Vùng Suy Nhược (Scientist)
+  'Drone Protocol': [0.25, 0.175],        // % giảm interval mìn tự động (Engineer)
+  // ── Skill buff nội tại (không hiện trong vote) ─────────────────────────────
+  'Combat Stim':    [0.20],               // +20% tốc chạy (Scientist Liều Kích Thích)
+  'Overcharge':     [0.30],               // +30% tốc bắn (Engineer Tháp Khuếch Đại)
 };
 
 export default class Player extends Phaser.Physics.Arcade.Sprite {
@@ -93,22 +104,23 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.passiveTick(time);
     this._basePassive(time);
 
+    const _cdm = 1 - this.getBuffValue('Cool Down'); // Cool Down powerup (0 khi chưa có)
     if (Phaser.Input.Keyboard.JustDown(this.cursors.primarySkill)) {
-      if (time > this.lastPrimaryUsed + this.primaryCooldown) {
+      if (time > this.lastPrimaryUsed + this.primaryCooldown * _cdm) {
         this.usePrimarySkill();
         this.lastPrimaryUsed = time;
       }
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.cursors.secondarySkill)) {
-      if (time > this.lastSecondaryUsed + this.secondaryCooldown) {
+      if (time > this.lastSecondaryUsed + this.secondaryCooldown * _cdm) {
         this.useSecondarySkill();
         this.lastSecondaryUsed = time;
       }
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.cursors.tertiarySkill)) {
-      if (time > this.lastTertiaryUsed + this.tertiaryCooldown) {
+      if (time > this.lastTertiaryUsed + this.tertiaryCooldown * _cdm) {
         this.useTertiarySkill();
         this.lastTertiaryUsed = time;
       }
@@ -260,7 +272,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const value = inc[current];
     this.activeBuffs[buffId] = current + 1;
     this.buffValues[buffId]  = (this.buffValues[buffId] || 0) + value;
-    if (buffId === 'Medkit Surge') this.heal(value); // immediate heal
+    if (buffId === 'Medkit Surge') this.heal(value);
+    if (buffId === 'Max HP') { this.maxHp += value; this.heal(value); }
   }
 
   removeBuff(buffId) {

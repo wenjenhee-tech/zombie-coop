@@ -225,7 +225,8 @@ export class Scientist extends Player {
     store.socket.emit('debuff_zone', {
       roomCode:  store.playerStats.roomCode,
       x: this.x, y: this.y,
-      radius: 150, vulnMs: 5000, poisonDps: 5, poisonMs: 5000
+      radius: 150 + this.getBuffValue('Plague Doctor'), // Plague Doctor: +50px/stack
+      vulnMs: 5000, poisonDps: 5, poisonMs: 5000
     });
   }
 
@@ -326,7 +327,8 @@ export class Engineer extends Player {
   passiveTick(time) {
     // Nội tại "Đinh Tán" — tự rải mìn mỗi 6s khi đang di chuyển
     const moving = Math.abs(this.body.velocity.x) > 10 || Math.abs(this.body.velocity.y) > 10;
-    if (moving && time > (this._lastCaltrop || 0) + 6000) {
+    const mineInterval = 6000 * (1 - this.getBuffValue('Drone Protocol')); // Drone Protocol: -25%/stack
+    if (moving && time > (this._lastCaltrop || 0) + mineInterval) {
       this._lastCaltrop = time;
       store.socket.emit('mine_placed', {
         roomCode: store.playerStats.roomCode,

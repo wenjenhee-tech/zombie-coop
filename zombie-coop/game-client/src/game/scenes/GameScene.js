@@ -855,13 +855,15 @@ export default class GameScene extends Phaser.Scene {
       if (Math.abs(da) > halfArc) return;
       hits++;
       store.socket.emit('zombie_damaged', {
-        roomCode: store.playerStats.roomCode, zombieId: z.id, damage: p.meleeDamage
+        roomCode: store.playerStats.roomCode, zombieId: z.id,
+        damage: Math.round(p.meleeDamage * (1 + p.getBuffValue('Sharpshooter')))
       });
     });
 
     // Hút máu — cap 2 mục tiêu/nhát để không overheal giữa đám đông
     if (hits > 0) {
-      p.heal(Math.round(p.meleeDamage * p.lifesteal * Math.min(hits, 2)));
+      // Bloodthirst (sig Melee): cộng thêm % hút máu
+      p.heal(Math.round(p.meleeDamage * (p.lifesteal + p.getBuffValue('Bloodthirst')) * Math.min(hits, 2)));
       store.playerStats.hp = p.hp;
     }
 
@@ -907,17 +909,22 @@ export default class GameScene extends Phaser.Scene {
       store.playerStats.maxHp = this.player.maxHp;
       store.playerStats.buffStacks = { ...this.player.activeBuffs }; // cho vote card hiện cấp stack/MAX
 
+      // Cool Down powerup: rút ngắn cooldown hiệu dụng để HUD hiển thị đúng
+      const _cdm = 1 - this.player.getBuffValue('Cool Down');
       const primaryDiff = time - this.player.lastPrimaryUsed;
-      store.playerStats.primaryCDReadyRatio = Math.min(1, primaryDiff / this.player.primaryCooldown);
-      store.playerStats.primaryCooldownMs = this.player.primaryCooldown;
+      const effPri = this.player.primaryCooldown * _cdm;
+      store.playerStats.primaryCDReadyRatio = Math.min(1, primaryDiff / effPri);
+      store.playerStats.primaryCooldownMs = effPri;
 
       const secondaryDiff = time - this.player.lastSecondaryUsed;
-      store.playerStats.secondaryCDReadyRatio = Math.min(1, secondaryDiff / this.player.secondaryCooldown);
-      store.playerStats.secondaryCooldownMs = this.player.secondaryCooldown;
+      const effSec = this.player.secondaryCooldown * _cdm;
+      store.playerStats.secondaryCDReadyRatio = Math.min(1, secondaryDiff / effSec);
+      store.playerStats.secondaryCooldownMs = effSec;
 
       const tertiaryDiff = time - this.player.lastTertiaryUsed;
-      store.playerStats.tertiaryCDReadyRatio = Math.min(1, tertiaryDiff / this.player.tertiaryCooldown);
-      store.playerStats.tertiaryCooldownMs = this.player.tertiaryCooldown;
+      const effTer = this.player.tertiaryCooldown * _cdm;
+      store.playerStats.tertiaryCDReadyRatio = Math.min(1, tertiaryDiff / effTer);
+      store.playerStats.tertiaryCooldownMs = effTer;
 
       // Emit movement — throttle ~20Hz (50ms) thay vì mỗi frame (~60Hz)
       const isMoving = this.player.body.velocity.x !== 0 || this.player.body.velocity.y !== 0;
@@ -1006,18 +1013,20 @@ export default class GameScene extends Phaser.Scene {
 
   handleBulletHitZombie(bullet, zombie) {
     if (bullet.active && zombie.active) {
-      
-      // Piercing shots logic
-      if (!this.player.piercingShots) {
+
+      // Piercing Round (powerup tier 3) hoặc Rain_Of_Bullets Q Ranged: đạn không tắt
+      if (!this.player.piercingShots && !this.player.hasBuff('Piercing Round')) {
         bullet.setActive(false);
         bullet.setVisible(false);
       }
-      
-      // Nội tại "Sát Thủ" (Ranged): chí mạng ×2 dmg (số dmg lớn hiện qua _damageNumber)
-      let dmg = bullet.damage || 15;
-      if (Math.random() < (this.player.critChance || 0)) {
+
+      // Sharpshooter: +% sát thương gây ra
+      let dmg = (bullet.damage || 15) * (1 + this.player.getBuffValue('Sharpshooter'));
+      // Crit Surge (sig Ranged) cộng vào critChance gốc
+      if (Math.random() < ((this.player.critChance || 0) + this.player.getBuffValue('Crit Surge'))) {
         dmg *= 2;
       }
+      dmg = Math.round(dmg);
 
       // Chỉ gửi lên server — server sẽ broadcast zombie_took_damage về cho tất cả
       // KHÔNG gọi zombie.takeDamage() ở đây để tránh double damage

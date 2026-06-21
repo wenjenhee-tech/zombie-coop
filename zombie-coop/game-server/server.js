@@ -1149,23 +1149,35 @@ setInterval(() => {
         .catch(e => console.warn('AI service unavailable, using default difficulty'));
       }
 
-      // Pool powerup. `name` PHẢI khớp key BUFF_INCREMENTS bên client (addBuff dùng name).
-      // maxStacks: số trần stack để vote card hiện "Lv x/n"/"ĐÃ MAX" (null = tiêu hao, luôn hữu ích).
-      // cat: off|def|util (phân loại hiển thị). sig: chỉ class này thấy (signature) — P2-3.
+      // Pool powerup P2-2. `name` PHẢI khớp key BUFF_INCREMENTS bên client (addBuff dùng name).
+      // maxStacks: trần stack cho vote card ("Lv x/n" / "ĐÃ MAX"); null = tiêu hao / không giới hạn hiển thị.
+      // sig: chỉ class này thấy powerup này (signature); undefined = chung cho mọi class.
       const POWERUP_POOL = [
-        { id: 'speed_boost',  name: 'Speed Boost',  desc: '+20% tốc độ di chuyển',                 tier: 1, cat: 'util', maxStacks: 3 },
-        { id: 'regen_aura',   name: 'Regen Aura',   desc: 'Tự hồi 1HP/giây khi không bị tấn công', tier: 1, cat: 'def',  maxStacks: 3 },
-        { id: 'medkit_surge', name: 'Medkit Surge', desc: 'Hồi phục 20HP ngay lập tức',            tier: 1, cat: 'def',  maxStacks: null },
-        { id: 'iron_skin',    name: 'Iron Skin',    desc: 'Giảm 25% damage nhận vào',              tier: 2, cat: 'def',  maxStacks: 3 },
-        { id: 'rapid_fire',   name: 'Rapid Fire',   desc: '+25% tốc độ bắn / chém',                tier: 2, cat: 'off',  maxStacks: 3 },
-        { id: 'fire_ammo',    name: 'Fire Ammo',    desc: 'Đạn gây cháy theo thời gian',           tier: 2, cat: 'off',  maxStacks: 1 },
+        // ── Tier 1 — phổ biến ──────────────────────────────────────────────────
+        { id: 'speed_boost',    name: 'Speed Boost',    desc: '+20% tốc độ di chuyển',                      tier: 1, cat: 'util', maxStacks: 3 },
+        { id: 'regen_aura',     name: 'Regen Aura',     desc: 'Tự hồi 1 HP/s khi không bị tấn công',        tier: 1, cat: 'def',  maxStacks: 3 },
+        { id: 'medkit_surge',   name: 'Medkit Surge',   desc: 'Hồi phục 20 HP ngay lập tức',                tier: 1, cat: 'def',  maxStacks: null },
+        { id: 'max_hp',         name: 'Max HP',         desc: '+20 máu tối đa (hồi ngay bằng lượng thêm)',  tier: 1, cat: 'def',  maxStacks: 3 },
+        // ── Tier 2 — trung bình ────────────────────────────────────────────────
+        { id: 'iron_skin',      name: 'Iron Skin',      desc: 'Giảm 25% sát thương nhận vào',               tier: 2, cat: 'def',  maxStacks: 3 },
+        { id: 'rapid_fire',     name: 'Rapid Fire',     desc: '+25% tốc độ bắn / chém',                     tier: 2, cat: 'off',  maxStacks: 3 },
+        { id: 'sharpshooter',   name: 'Sharpshooter',   desc: '+15% sát thương gây ra (đạn lẫn cận chiến)', tier: 2, cat: 'off',  maxStacks: 3 },
+        { id: 'cool_down',      name: 'Cool Down',      desc: 'Giảm 15% hồi chiêu tất cả kỹ năng',          tier: 2, cat: 'util', maxStacks: 3 },
+        // ── Tier 3 — hiếm ──────────────────────────────────────────────────────
+        { id: 'fire_ammo',      name: 'Fire Ammo',      desc: 'Đạn cháy: thêm 5 dmg/s × 3s sau mỗi phát',  tier: 3, cat: 'off',  maxStacks: 1 },
+        { id: 'piercing_round', name: 'Piercing Round', desc: 'Đạn xuyên qua thêm 1 zombie',                tier: 3, cat: 'off',  maxStacks: 1 },
+        // ── Signature — độc quyền theo class (sig) ─────────────────────────────
+        { id: 'crit_surge',     name: 'Crit Surge',     desc: '+10% tỉ lệ chí mạng (×2 sát thương)',       tier: 3, cat: 'off',  maxStacks: 3, sig: 'ranged' },
+        { id: 'bloodthirst',    name: 'Bloodthirst',    desc: '+10% hút máu khi chém',                     tier: 3, cat: 'off',  maxStacks: 2, sig: 'melee' },
+        { id: 'plague_doctor',  name: 'Plague Doctor',  desc: 'Vùng Suy Nhược rộng hơn +50px',             tier: 3, cat: 'off',  maxStacks: 2, sig: 'scientist' },
+        { id: 'drone_protocol', name: 'Drone Protocol', desc: 'Mìn tự động (Đinh Tán) nhanh hơn 25%',      tier: 3, cat: 'util', maxStacks: 2, sig: 'engineer' },
       ];
 
       const CLASS_PREFERRED = {
-        ranged:    ['rapid_fire', 'fire_ammo'],
-        melee:     ['iron_skin', 'medkit_surge'],
-        scientist: ['regen_aura', 'medkit_surge'],
-        engineer:  ['speed_boost', 'iron_skin'],
+        ranged:    ['rapid_fire', 'sharpshooter', 'crit_surge'],
+        melee:     ['iron_skin', 'bloodthirst', 'medkit_surge'],
+        scientist: ['regen_aura', 'plague_doctor', 'cool_down'],
+        engineer:  ['drone_protocol', 'speed_boost', 'rapid_fire'],
       };
 
       // Trọng số theo tier: tier cao càng hiếm. Ưu tiên class nhân thêm.
