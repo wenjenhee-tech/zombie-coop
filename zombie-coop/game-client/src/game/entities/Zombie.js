@@ -57,8 +57,31 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
 
   setTarget(target) { this.target = target; }
 
+  // Elite: phình to + quầng sáng màu theo affix. Stat (hp/speed) do server đã scale sẵn.
+  markElite(affix) {
+    this.isElite = true;
+    this.affix = affix;
+    this._baseScale *= 1.18;
+    this.setScale(this._baseScale);
+    const AURA = { swift: 0x00e5ff, armored: 0x90a4ae, volatile: 0xff6e40 };
+    this._auraColor = AURA[affix] || 0xffffff;
+    this._eliteAura = this.scene.add.graphics().setDepth(0);
+  }
+
+  _drawAura(time) {
+    if (!this._eliteAura) return;
+    const r = (this.size / 2) * 1.3;
+    const pulse = 0.5 + 0.3 * Math.sin(time / 170);
+    this._eliteAura.clear();
+    this._eliteAura.fillStyle(this._auraColor, pulse * 0.18);
+    this._eliteAura.fillCircle(this.x, this.y, r);
+    this._eliteAura.lineStyle(2.5, this._auraColor, 0.55 + pulse * 0.35);
+    this._eliteAura.strokeCircle(this.x, this.y, r);
+  }
+
   update(time, _delta) {
     if (!this.active) return;
+    if (this._eliteAura) this._drawAura(time);
 
     let targetX, targetY;
     if (this.tauntUntil && time < this.tauntUntil) {
@@ -205,7 +228,14 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
 
   hasEffect(effectName) { return this.activeEffects.includes(effectName); }
 
+  // Dọn quầng elite ở MỌI đường huỷ (die tween, intermission clear(true,true)).
+  destroy(fromScene) {
+    if (this._eliteAura) { this._eliteAura.destroy(); this._eliteAura = null; }
+    super.destroy(fromScene);
+  }
+
   die() {
+    if (this._eliteAura) { this._eliteAura.destroy(); this._eliteAura = null; }
     if (!this.active) { this.destroy(); return; }
     // Tắt logic + va chạm ngay (handler check !active để đếm kill), rồi poof xác.
     this.setActive(false);

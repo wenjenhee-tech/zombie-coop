@@ -368,8 +368,15 @@ function applyZombieDamage(room, code, zId, damage, attackerId) {
   if (killer) { killer.kills++; killer.score += score; }
 
   const wasScreamer = z.type === 'screamer';
+  const wasVolatile = z.affix === 'volatile';
   const dx = z.x, dy = z.y;
   delete room.zombies[zId];
+
+  // Elite "volatile": nổ AoE khi chết — tái dùng kênh exploder_exploded (client đã xử lý
+  // render + áp damage cho player trong bán kính).
+  if (wasVolatile) {
+    io.to(code).emit('exploder_exploded', { zombieId: zId, x: dx, y: dy, radius: 95, damage: 28 });
+  }
 
   if (wasScreamer) {
     for (let i = 0; i < 3; i++) {
@@ -877,23 +884,36 @@ setInterval(() => {
       if (room.currentWave >= 8) types.push('exploder');
       if (room.currentWave >= 11) types.push('brute');
 
+      const isBossWave = room.currentWave === 5 || room.currentWave === 10;
       if (room.currentWave === 5) type = 'brute';
       else if (room.currentWave === 10) type = 'hordeking';
-      else if (eliteChance > 0 && Math.random() < eliteChance) type = 'brute';
       else type = types[Math.floor(Math.random() * types.length)];
+
+      // Elite affix: ch\u1ec9 qu\u00e1i th\u01b0\u1eddng (kh\u00f4ng boss wave), theo eliteSpawnChance t\u1eeb Director.
+      // swift = nhanh, armored = tr\u00e2u, volatile = n\u1ed5 AoE khi ch\u1ebft.
+      const AFFIX_MULT = { swift: { hp: 1.0, speed: 1.5 }, armored: { hp: 2.2, speed: 1.0 }, volatile: { hp: 1.3, speed: 1.1 } };
+      let affix = null;
+      if (!isBossWave && eliteChance > 0 && Math.random() < eliteChance) {
+        const keys = ['swift', 'armored', 'volatile'];
+        affix = keys[Math.floor(Math.random() * keys.length)];
+      }
+      const m = affix ? AFFIX_MULT[affix] : { hp: 1, speed: 1 };
 
       const baseSpeed = type === 'runner' ? 120 : type === 'brute' ? 30 : 50;
       // HP ph\u1ea3i kh\u1edbp v\u1edbi Zombie.js client-side
       const HP_TABLE = { walker: 30, runner: 20, brute: 200, spitter: 30, hordeking: 500, screamer: 15, exploder: 40 };
+      const hp = Math.round((HP_TABLE[type] || 30) * m.hp);
       const zombieId = Math.random().toString(36).substring(2, 9);
       room.zombies[zombieId] = {
         id: zombieId,
         type: type,
         x: x,
         y: y,
-        hp: HP_TABLE[type] || 30,
-        speed: Math.round(baseSpeed * speedMult),
-        rotation: 0
+        hp: hp,
+        speed: Math.round(baseSpeed * speedMult * m.speed),
+        rotation: 0,
+        elite: !!affix,
+        affix: affix
       };
 
       io.to(code).emit('zombie_spawned', {
@@ -902,7 +922,9 @@ setInterval(() => {
         type: type,
         x: x,
         y: y,
-        hp: HP_TABLE[type] || 30
+        hp: hp,
+        elite: !!affix,
+        affix: affix
       });
 
       // Hết quota đợt này → sang đợt kế + nghỉ ngắn (lull) cho người chơi thở

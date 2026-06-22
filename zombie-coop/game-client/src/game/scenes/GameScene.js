@@ -218,6 +218,7 @@ export default class GameScene extends Phaser.Scene {
         zombie.maxHp = data.hp;
       }
       zombie.setTarget(this.player);
+      if (data.elite) zombie.markElite(data.affix); // quầng sáng + scale theo affix
       // Boss: hordeking (wave 10) luôn là boss; brute là boss CHỈ ở wave 5 (wave 11+ là quái thường)
       zombie.isBoss = data.type === 'hordeking' || (data.type === 'brute' && this.currentWave === 5);
       if (zombie.isBoss) {
