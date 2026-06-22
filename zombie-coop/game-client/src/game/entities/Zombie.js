@@ -123,22 +123,34 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
         }
       }
 
-      // Spitter: ranged spit
-      if (this.type === 'spitter' && this.target && this.target.active) {
+      // Spitter (host-only): nạp 0.45s + telegraph chấm độc phình to TRƯỚC khi nhổ → kịp né.
+      if (this.type === 'spitter' && this.target && this.target.active && store.currentRoomDetails?.isHost) {
         const dist = Phaser.Math.Distance.Between(this.x, this.y, this.target.x, this.target.y);
-        if (dist < this.spitRange && time > this.lastSpitTime + this.spitCooldown) {
+        if (this._spitChargeUntil) {
+          const prog = 1 - Math.max(0, this._spitChargeUntil - time) / 450;
+          if (!this._spitCharge) this._spitCharge = this.scene.add.graphics().setDepth(40);
+          this._spitCharge.clear();
+          this._spitCharge.fillStyle(0x33ff55, 0.85);
+          this._spitCharge.fillCircle(this.x, this.y - this.size * 0.3, 2 + prog * 7);
+          this.setTint(0x88ff88);
+          if (time >= this._spitChargeUntil) {
+            this._spitChargeUntil = 0;
+            this._spitCharge.destroy(); this._spitCharge = null;
+            this.clearTint();
+            this.shootSpit(Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y));
+          }
+        } else if (dist < this.spitRange && time > this.lastSpitTime + this.spitCooldown) {
           this.lastSpitTime = time;
-          this.shootSpit(angle);
+          this._spitChargeUntil = time + 450;
         }
       }
 
-      // Hordeking: AoE scream at 50% HP
-      if (this.type === 'hordeking' && this.hp < this.maxHp * 0.5 && !this.hasScreamed) {
-        if (time > this.lastScreamTime + this.screamCooldown) {
-          this.lastScreamTime = time;
-          this.hasScreamed = true;
-          this.doScream();
-        }
+      // Hordeking: cú hét đẩy lùi — telegraph vòng đỏ nở 0.55s TRƯỚC khi đẩy, lặp theo cooldown.
+      if (this.type === 'hordeking' && this.hp < this.maxHp * 0.5
+          && time > this.lastScreamTime + this.screamCooldown && !this._screaming) {
+        this._screaming = true;
+        this.lastScreamTime = time;
+        this._telegraphScream();
       }
 
     } else {
@@ -178,18 +190,37 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
     this.scene.time.delayedCall(1500, () => { if (spit.active) spit.destroy(); });
   }
 
-  doScream() {
-    const ring = this.scene.add.graphics();
-    ring.lineStyle(3, 0xff0000, 1);
-    ring.strokeCircle(this.x, this.y, 200);
-    this.scene.time.delayedCall(400, () => ring.destroy());
+  // Cảnh báo cú hét: vòng đỏ nở dần trong 0.55s; hết thì mới thực sự đẩy lùi (_applyScream).
+  _telegraphScream() {
+    const ring = this.scene.add.graphics().setDepth(40);
+    this.scene.tweens.addCounter({
+      from: 0, to: 1, duration: 550,
+      onUpdate: (tw) => {
+        if (!this.active) return;
+        const t = tw.getValue();
+        ring.clear();
+        ring.lineStyle(4, 0xff3030, 0.85 * (1 - t) + 0.15);
+        ring.strokeCircle(this.x, this.y, 60 + t * 150);
+      },
+      onComplete: () => {
+        ring.destroy();
+        this._screaming = false;
+        if (this.active) this._applyScream();
+      }
+    });
+  }
+
+  _applyScream() {
+    const flash = this.scene.add.graphics().setDepth(40);
+    flash.lineStyle(3, 0xff0000, 1);
+    flash.strokeCircle(this.x, this.y, 210);
+    this.scene.time.delayedCall(300, () => flash.destroy());
 
     if (this.target && this.target.active) {
       const dist = Phaser.Math.Distance.Between(this.x, this.y, this.target.x, this.target.y);
-      if (dist < 200) {
+      if (dist < 210) {
         const pushAngle = Phaser.Math.Angle.Between(this.x, this.y, this.target.x, this.target.y);
         this.scene.physics.velocityFromRotation(pushAngle, 400, this.target.body.velocity);
-        this.hasScreamed = false;
       }
     }
   }
@@ -228,9 +259,10 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
 
   hasEffect(effectName) { return this.activeEffects.includes(effectName); }
 
-  // Dọn quầng elite ở MỌI đường huỷ (die tween, intermission clear(true,true)).
+  // Dọn graphics phụ ở MỌI đường huỷ (die tween, intermission clear(true,true)).
   destroy(fromScene) {
     if (this._eliteAura) { this._eliteAura.destroy(); this._eliteAura = null; }
+    if (this._spitCharge) { this._spitCharge.destroy(); this._spitCharge = null; }
     super.destroy(fromScene);
   }
 
