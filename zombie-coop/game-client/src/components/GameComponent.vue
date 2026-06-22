@@ -5,10 +5,10 @@
     <!-- Banner intermission: đã chọn xong, (chờ đồng đội nếu nhiều người) + đếm ngược 5s -->
     <div v-if="store.intermission.active" class="intermission-banner">
       <template v-if="store.intermission.total > 1">
-        <span class="im-label">⏳ Chờ đồng đội chọn power-up</span>
+        <span class="im-label">⏳ Chờ đồng đội chọn nâng cấp</span>
         <span class="im-count">{{ store.intermission.chosenCount }}/{{ store.intermission.total }}</span>
       </template>
-      <span v-else class="im-label">✓ Đã chọn power-up</span>
+      <span v-else class="im-label">✓ Đã chọn nâng cấp</span>
       <span v-if="store.intermission.countdownSeconds != null" class="im-countdown">
         · Wave kế trong <strong>{{ store.intermission.countdownSeconds }}s</strong>
       </span>

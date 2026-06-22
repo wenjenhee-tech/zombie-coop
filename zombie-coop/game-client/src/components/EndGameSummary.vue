@@ -17,7 +17,7 @@
       </div>
       <div class="stat">
         <div class="value">{{ store.endGameStats.powerupsUsed }}</div>
-        <div class="label">Power-up đã chọn</div>
+        <div class="label">Nâng cấp đã chọn</div>
       </div>
       <div class="stat">
         <div class="value">{{ store.endGameStats.totalScore.toLocaleString() }}</div>

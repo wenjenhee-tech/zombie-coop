@@ -79,9 +79,34 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
     this._eliteAura.strokeCircle(this.x, this.y, r);
   }
 
+  // Thanh máu nổi trên đầu — chỉ vẽ khi đã mất máu (giữ màn hình gọn lúc full HP).
+  // Quái to/elite/boss luôn hiện ngay cả khi chưa trúng đòn để dễ "đọc" mối đe doạ.
+  _drawHpBar() {
+    const heavy = this.isElite || this.maxHp >= 150 || this.type === 'spitter';
+    const show = this.hp > 0 && (this.hp < this.maxHp || heavy);
+    if (!show) {
+      if (this._hpBar) { this._hpBar.clear(); }
+      return;
+    }
+    if (!this._hpBar) this._hpBar = this.scene.add.graphics().setDepth(45);
+    const w = Math.max(24, this.size * 0.9);
+    const h = 4;
+    const x = this.x - w / 2;
+    const y = this.y - this.displayHeight / 2 - 8;
+    const frac = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1);
+    // xanh → vàng → đỏ theo % máu
+    const col = frac > 0.5 ? 0x4caf50 : frac > 0.25 ? 0xffb300 : 0xe53935;
+    this._hpBar.clear();
+    this._hpBar.fillStyle(0x000000, 0.55);
+    this._hpBar.fillRect(x - 1, y - 1, w + 2, h + 2);
+    this._hpBar.fillStyle(col, 1);
+    this._hpBar.fillRect(x, y, w * frac, h);
+  }
+
   update(time, _delta) {
     if (!this.active) return;
     if (this._eliteAura) this._drawAura(time);
+    this._drawHpBar();
 
     let targetX, targetY;
     if (this.tauntUntil && time < this.tauntUntil) {
@@ -263,11 +288,13 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
   destroy(fromScene) {
     if (this._eliteAura) { this._eliteAura.destroy(); this._eliteAura = null; }
     if (this._spitCharge) { this._spitCharge.destroy(); this._spitCharge = null; }
+    if (this._hpBar) { this._hpBar.destroy(); this._hpBar = null; }
     super.destroy(fromScene);
   }
 
   die() {
     if (this._eliteAura) { this._eliteAura.destroy(); this._eliteAura = null; }
+    if (this._hpBar) { this._hpBar.destroy(); this._hpBar = null; }
     if (!this.active) { this.destroy(); return; }
     // Tắt logic + va chạm ngay (handler check !active để đếm kill), rồi poof xác.
     this.setActive(false);

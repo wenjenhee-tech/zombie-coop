@@ -151,13 +151,13 @@ export default class GameScene extends Phaser.Scene {
   setupMultiplayerSync() {
     // XÓA tất cả listener cũ trước khi thêm mới — tránh tích lũy qua nhiều game session
     const events = [
-      'player_moved', 'player_shot', 'zombie_spawned', 'zombies_updated',
+      'player_moved', 'player_shot', 'player_meleed', 'zombie_spawned', 'zombies_updated',
       'zombie_took_damage', 'heal_aoe', 'shield_wall_active', 'taunt_active',
       'intermission_start', 'next_wave_started', 'difficulty_update',
       'you_are_host', 'player_revived', 'mine_placed', 'mine_exploded',
       'exploder_exploded', 'player_died', 'skill_burst_fx', 'debuff_zone_fx', 'team_stim',
       'turret_spawned', 'turret_fired', 'turret_removed', 'pylon_active',
-      'powerup_progress', 'wave_countdown_start'
+      'powerup_progress', 'wave_countdown_start', 'player_left'
     ];
     events.forEach(e => store.socket.off(e));
 
@@ -207,6 +207,14 @@ export default class GameScene extends Phaser.Scene {
       // Xoay vũ khí người bắn theo hướng + chớp lửa (cover cả khi họ đứng yên bắn)
       const shooter = this.otherPlayers.getChildren().find(p => p.id === data.id);
       if (shooter) this._updateOtherWeapon(shooter, data.x, data.y, data.angle, true);
+    });
+
+    // Đồng đội melee vung dao — vẽ vệt chém + xoay vũ khí + tiếng (visual, không gây dmg ở đây).
+    store.socket.on('player_meleed', (data) => {
+      this._meleeSlash(data.x, data.y, data.aim, data.reach, data.halfArc);
+      this.playSpatial('zombie_hit', data.x, data.y, 0.18, 100);
+      const swinger = this.otherPlayers.getChildren().find(p => p.id === data.id);
+      if (swinger) this._updateOtherWeapon(swinger, data.x, data.y, data.aim, true);
     });
 
     store.socket.on('zombie_spawned', (data) => {
@@ -521,6 +529,15 @@ export default class GameScene extends Phaser.Scene {
         this._clearWaveCountdown();
         this.cameras.main.stopFollow();
         store.setScreen('spectator');
+      }
+    });
+
+    // Người chơi rời phòng/rớt mạng → gỡ hẳn sprite + vũ khí (tránh "ghost" đứng yên mãi).
+    store.socket.on('player_left', (data) => {
+      const other = this.otherPlayers.getChildren().find(p => p.id === data.id);
+      if (other) {
+        if (other.weapon) other.weapon.destroy();
+        this.otherPlayers.remove(other, true, true);
       }
     });
   }
@@ -863,6 +880,12 @@ export default class GameScene extends Phaser.Scene {
     const halfArc = Phaser.Math.DegToRad(p.meleeArcDeg) / 2;
     const reach = p.meleeRange;
     let hits = 0, totalDmg = 0, lastZ = null;
+
+    // Relay cú vung cho đồng đội (luôn gửi, kể cả trượt) → họ thấy vệt chém + nghe tiếng.
+    store.socket.emit('player_melee', {
+      roomCode: store.playerStats.roomCode,
+      x: p.x, y: p.y, aim, reach, halfArc
+    });
 
     this.zombies.getChildren().forEach(z => {
       if (!z.active) return;

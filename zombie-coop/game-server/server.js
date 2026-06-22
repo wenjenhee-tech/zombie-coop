@@ -320,6 +320,23 @@ function checkGameOver(room, code) {
 // Tất cả đã chọn → đếm ngược 5s → advanceWave. Quá 60s → người chưa chọn chết (AFK).
 function handleIntermission(room, code, now) {
   const im = room.intermission;
+
+  // Đệm popup: chờ openAt rồi mới emit intermission_start (1 lần). Trong lúc đệm chưa
+  // tính AFK 60s — startedAt được dời về thời điểm popup thực sự hiện.
+  if (!im.opened) {
+    if (now < im.openAt) return;
+    im.opened = true;
+    im.startedAt = now;
+    room.players.forEach(p => {
+      io.to(p.id).emit('intermission_start', {
+        options: (im.pendingOptions && im.pendingOptions[p.id]) || [],
+        wave: room.currentWave
+      });
+    });
+    im.pendingOptions = null;
+    return;
+  }
+
   // Chỉ người CÒN SỐNG mới phải chọn (người chết-AFK đang ở spectator, bỏ qua)
   const alive = room.players.filter(p => p.isAlive);
   const chosenCount = alive.filter(p => p.id in im.chosen).length;
@@ -543,6 +560,19 @@ io.on('connection', (socket) => {
       damage: data.damage,
       isPiercing: data.isPiercing,
       isFireAmmo: data.isFireAmmo
+    });
+  });
+
+  // Melee swing relay — sát thương đã đi qua zombie_damaged; đây chỉ relay FX cho peers.
+  socket.on('player_melee', (data) => {
+    const room = activeRooms[data.roomCode];
+    if (room && room.telemetry) {
+      room.telemetry.shotsFired++;
+      room.telemetry.actionCount++;
+    }
+    socket.to(data.roomCode).emit('player_meleed', {
+      id: socket.id,
+      x: data.x, y: data.y, aim: data.aim, reach: data.reach, halfArc: data.halfArc
     });
   });
 
@@ -822,6 +852,8 @@ io.on('connection', (socket) => {
       const pIndex = room.players.findIndex(p => p.id === socket.id);
       if (pIndex !== -1) {
         room.players.splice(pIndex, 1);
+        // Báo cho client trong phòng gỡ sprite "ghost" của người vừa rớt (tránh tồn dư khi reconnect đổi socket.id)
+        io.to(code).emit('player_left', { id: socket.id });
         if (room.players.length === 0) {
           delete activeRooms[code];
         } else {
@@ -1230,14 +1262,15 @@ setInterval(() => {
 
       // Mở intermission do server lái: theo dõi ai đã chọn powerup, đếm ngược 5s
       // khi đủ người, hoặc cho người AFK chết sau 60s.
-      room.intermission = { active: true, startedAt: Date.now(), chosen: {}, countdownStart: null };
-
-      room.players.forEach(p => {
-        io.to(p.id).emit('intermission_start', {
-          options: getPersonalizedOptions(p.class),
-          wave: room.currentWave
-        });
-      });
+      // ĐỆM 2s: wave vừa hết, nhiều người còn đang giữ chuột bắn → nếu hiện popup ngay
+      // họ dễ lỡ tay chọn powerup. Lưu sẵn options, chỉ emit intermission_start sau openAt.
+      const POPUP_DELAY = 2000;
+      const pendingOptions = {};
+      room.players.forEach(p => { pendingOptions[p.id] = getPersonalizedOptions(p.class); });
+      room.intermission = {
+        active: true, startedAt: Date.now(), chosen: {}, countdownStart: null,
+        opened: false, openAt: Date.now() + POPUP_DELAY, pendingOptions
+      };
     }
   }
 }, 50);
