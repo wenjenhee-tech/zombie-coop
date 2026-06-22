@@ -218,6 +218,15 @@ export default class GameScene extends Phaser.Scene {
         zombie.maxHp = data.hp;
       }
       zombie.setTarget(this.player);
+      // Boss: hordeking (wave 10) luôn là boss; brute là boss CHỈ ở wave 5 (wave 11+ là quái thường)
+      zombie.isBoss = data.type === 'hordeking' || (data.type === 'brute' && this.currentWave === 5);
+      if (zombie.isBoss) {
+        store.bossBar = {
+          active: true,
+          name: data.type === 'hordeking' ? '👑 HORDE KING' : 'BRUTE',
+          hp: zombie.hp, maxHp: zombie.maxHp
+        };
+      }
       this.zombies.add(zombie);
     });
 
@@ -238,6 +247,11 @@ export default class GameScene extends Phaser.Scene {
         const zx = zombie.x, zy = zombie.y, zcolor = zombie.color || 0x8b0000;
         zombie.takeDamage(data.damage);
         this._damageNumber(zx, zy, data.damage);
+
+        if (zombie.isBoss && store.bossBar.active) {
+          store.bossBar.hp = Math.max(0, zombie.hp);
+          if (!zombie.active) store.bossBar.active = false; // boss chết → ẩn thanh
+        }
 
         // Rate-limit để tránh spam âm thanh khi nhiều người bắn cùng lúc
         if (this.time.now > (this._lastHitSfx || 0) + 80) {
@@ -328,6 +342,7 @@ export default class GameScene extends Phaser.Scene {
     store.socket.on('intermission_start', (data) => {
       this.isWaveActive = false;
       this.zombies.clear(true, true);
+      store.bossBar.active = false; // wave kết thúc → ẩn thanh boss (nếu còn)
       // Súng Máy không bắc cầu qua wave (server reset room.turrets ở initWave)
       for (const id in this.turretSprites) this.turretSprites[id].destroy();
       this.turretSprites = {};
@@ -876,6 +891,7 @@ export default class GameScene extends Phaser.Scene {
     this._meleeSlash(p.x, p.y, aim, reach, halfArc);
     if (hits > 0) {
       this.cameras.main.shake(60, 0.004);
+      if (hits >= 2) this._hitStop(55, 0.1); // cleave trúng ≥2 → khựng "nặng tay"
       if (!store.isMuted && this.cache.audio.exists('zombie_hit')) {
         this.sound.play('zombie_hit', { volume: 0.22, detune: Phaser.Math.Between(-100, 100) });
       }
@@ -991,6 +1007,21 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  // Hit-stop: khựng thời gian cực ngắn cho đòn nặng (crit / cleave trúng nhiều) → "punch".
+  // Dùng setTimeout REAL-TIME để khôi phục (không bị chính timeScale làm giãn ra).
+  // Arcade physics: world.timeScale > 1 = chậm hơn (nghịch đảo của clock timeScale).
+  _hitStop(ms = 50, slow = 0.12) {
+    if (this._hitStopActive) return;
+    this._hitStopActive = true;
+    this.time.timeScale = slow;
+    this.physics.world.timeScale = 1 / slow;
+    window.setTimeout(() => {
+      if (this.time) this.time.timeScale = 1;
+      if (this.physics?.world) this.physics.world.timeScale = 1;
+      this._hitStopActive = false;
+    }, ms);
+  }
+
   // Rung camera theo khoảng cách tới điểm nổ (gần rung mạnh, xa hầu như không).
   _shakeAt(x, y, baseIntensity = 0.01, maxDist = 500, duration = 220) {
     if (!this.player) return;
@@ -1025,6 +1056,7 @@ export default class GameScene extends Phaser.Scene {
       // Crit Surge (sig Ranged) cộng vào critChance gốc
       if (Math.random() < ((this.player.critChance || 0) + this.player.getBuffValue('Crit Surge'))) {
         dmg *= 2;
+        this._hitStop(50, 0.12); // crit → khựng nhẹ cho "chắc đòn"
       }
       dmg = Math.round(dmg);
 

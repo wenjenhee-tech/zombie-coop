@@ -14,6 +14,14 @@
       </span>
     </div>
 
+    <!-- Boss health bar (hordeking / brute boss wave) -->
+    <div v-if="store.bossBar.active" class="boss-bar">
+      <div class="boss-name">{{ store.bossBar.name }}</div>
+      <div class="boss-bar-bg">
+        <div class="boss-bar-fill" :style="{ width: (store.bossBar.hp / store.bossBar.maxHp * 100) + '%' }"></div>
+      </div>
+    </div>
+
     <!-- HUD Overlay -->
     <div class="hud-overlay">
       <div class="hud-bottom">
@@ -205,6 +213,41 @@ onUnmounted(() => {
 }
 .im-countdown { color: #9ad; }
 .im-countdown strong { color: #4fc3f7; }
+
+/* ── Boss health bar (trên đỉnh, giữa màn hình) ── */
+.boss-bar {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 560px;
+  max-width: 70%;
+  pointer-events: none;
+  z-index: 18;
+  text-align: center;
+}
+.boss-name {
+  color: #ff5252;
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 2px;
+  text-shadow: 0 0 8px rgba(255, 0, 0, 0.6), 1px 1px 2px #000;
+  margin-bottom: 4px;
+}
+.boss-bar-bg {
+  height: 16px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid #7a1010;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: 0 0 12px rgba(180, 0, 0, 0.45);
+}
+.boss-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8e0000, #e53935 60%, #ff7043);
+  transition: width 0.18s ease;
+}
 
 .hud-overlay {
   position: absolute;

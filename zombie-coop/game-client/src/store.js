@@ -30,6 +30,9 @@ export const store = reactive({
   
   pendingBuffId: null,
 
+  // Thanh máu boss (hordeking wave 10 / brute wave 5) — GameScene cập nhật theo zombie_took_damage
+  bossBar: { active: false, name: '', hp: 0, maxHp: 1 },
+
   // Trạng thái intermission (chờ chọn powerup giữa các wave) — server lái
   intermission: {
     active: false,

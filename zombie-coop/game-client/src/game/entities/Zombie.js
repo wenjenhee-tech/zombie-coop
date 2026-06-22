@@ -82,6 +82,24 @@ export default class Zombie extends Phaser.Physics.Arcade.Sprite {
 
       this._updateFacingAnim();
 
+      // Exploder telegraph: server cho nổ khi <70px tới mục tiêu. Nhấp nháy đỏ + phình nhẹ
+      // từ 130px để người chơi kịp né (biến cái chết "bực" thành "fair").
+      if (this.type === 'exploder' && this.target && this.target.active) {
+        const d = Phaser.Math.Distance.Between(this.x, this.y, this.target.x, this.target.y);
+        if (d < 130) {
+          // càng gần càng nhấp nháy nhanh (180ms ở xa → 70ms ở sát)
+          const period = 70 + (d / 130) * 110;
+          const on = Math.floor(time / period) % 2 === 0;
+          this.setTint(on ? 0xff2020 : 0xffd0d0);
+          this.setScale(this._baseScale * (on ? 1.12 : 1.0));
+          this._arming = true;
+        } else if (this._arming) {
+          this._arming = false;
+          this.clearTint();
+          this.setScale(this._baseScale);
+        }
+      }
+
       // Spitter: ranged spit
       if (this.type === 'spitter' && this.target && this.target.active) {
         const dist = Phaser.Math.Distance.Between(this.x, this.y, this.target.x, this.target.y);
