@@ -151,6 +151,8 @@ onMounted(() => {
     width: 1280,
     height: 720,
     parent: 'phaser-container',
+    pixelArt: true,          // nearest-neighbor + tắt antialias → sprite sắc nét, hết nhoè
+    roundPixels: true,       // snap toạ độ vẽ về số nguyên → không rung/mờ khi di chuyển
     physics: {
       default: 'arcade',
       arcade: { gravity: { y: 0 }, debug: false }

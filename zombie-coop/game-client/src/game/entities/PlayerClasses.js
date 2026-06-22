@@ -4,7 +4,7 @@ import { store } from '../../store';
 
 export class Ranged extends Player {
   constructor(scene, x, y) {
-    super(scene, x, y, 'player_ranged');
+    super(scene, x, y, 'ranged_sprite');   // sprite tĩnh vẽ tay (Soul Knight), giữ layer súng
     this.className      = 'Ranged';
     this.playerClass    = 'ranged';
     this.color          = 0x3498db;
@@ -20,9 +20,12 @@ export class Ranged extends Player {
     this.bulletSpeedMult = 1;
     this.critChance     = 0.15; // Nội tại "Sát Thủ": 15% chí mạng ×2 dmg
 
-    // Sprite Gunner redesign ở 48px → hitbox khớp thân nhìn thấy (rộng 24, cao 34),
-    // tự canh giữa frame. Chỉ đổi vùng va chạm, KHÔNG đổi speed/hp/damage.
-    this.body.setSize(24, 34);
+    // Soul Knight: sprite tĩnh nhìn chính diện + lật theo chuột; KHÔNG ẩn súng (sprite không có súng).
+    this.useSpriteAnim = true;
+    this.spriteIdle    = null;     // tĩnh 1 frame
+    this.hideWeapon    = false;    // vẫn vẽ súng xoay theo chuột
+    this.setScale(0.7);            // ~45px hiển thị
+    this.body.setSize(34, 44);     // hitbox khớp thân (toạ độ frame 63×64, tự scale)
   }
 
   usePrimarySkill() {
@@ -107,7 +110,7 @@ export class Ranged extends Player {
 
 export class Melee extends Player {
   constructor(scene, x, y) {
-    super(scene, x, y, 'player_melee');
+    super(scene, x, y, 'melee_sprite');   // sprite tĩnh vẽ tay (Soul Knight)
     this.className      = 'Melee';
     this.playerClass    = 'melee';
     this.color          = 0xe74c3c;
@@ -131,8 +134,14 @@ export class Melee extends Player {
     this.meleeArcDeg = 120;  // bề rộng vòng cung quét
     this.lifesteal   = 0.25; // hồi máu = 25% sát thương gây ra (cap 2 mục tiêu/nhát)
 
-    // Sprite redesign 48px (to nặng) → hitbox khớp thân. Chỉ vùng va chạm.
-    this.body.setSize(28, 34);
+    // Sprite sheet 64×56: dùng chế độ Soul Knight (luôn nhìn chính diện + lật trái/phải),
+    // không dùng walk_<dir>. Idle/bounce luôn chạy; vũ khí đã nằm trong sprite nên ẩn layer súng.
+    this.useSpriteAnim = true;
+    this.spriteIdle    = null;                        // sprite tĩnh 1 frame
+    this.hideWeapon    = true;                        // cảm giác chém thể hiện qua slash-arc
+    this.setScale(0.72);                              // ~43px hiển thị
+    this.body.setSize(36, 46);                        // hitbox khớp thân (frame 59×64, tự scale)
+    this.weaponGraphics.setVisible(false);
   }
 
   usePrimarySkill() {
@@ -190,7 +199,7 @@ export class Melee extends Player {
 
 export class Scientist extends Player {
   constructor(scene, x, y) {
-    super(scene, x, y, 'player_scientist');
+    super(scene, x, y, 'scientist_sprite');   // sprite tĩnh vẽ tay (Soul Knight)
     this.className      = 'Scientist';
     this.playerClass    = 'scientist';
     this.color          = 0x2ecc71;
@@ -203,7 +212,11 @@ export class Scientist extends Player {
     this.secondaryCooldown = 14000; // E "Vùng Suy Nhược"
     this.tertiaryCooldown  = 22000;
 
-    this.body.setSize(24, 34); // sprite 48px → hitbox khớp thân
+    this.useSpriteAnim = true;
+    this.spriteIdle    = null;
+    this.hideWeapon    = false;   // Scientist bắn đạn → giữ súng xoay theo chuột
+    this.setScale(0.72);
+    this.body.setSize(34, 40);    // hitbox khớp thân (frame 64×56, tự scale)
   }
 
   usePrimarySkill() {
@@ -269,7 +282,7 @@ export class Scientist extends Player {
 
 export class Engineer extends Player {
   constructor(scene, x, y) {
-    super(scene, x, y, 'player_engineer');
+    super(scene, x, y, 'engineer_sprite');   // sprite tĩnh vẽ tay (Soul Knight)
     this.className      = 'Engineer';
     this.playerClass    = 'engineer';
     this.color          = 0xf39c12;
@@ -282,7 +295,11 @@ export class Engineer extends Player {
     this.secondaryCooldown = 12000;
     this.tertiaryCooldown  = 15000;
 
-    this.body.setSize(24, 34); // sprite 48px → hitbox khớp thân
+    this.useSpriteAnim = true;
+    this.spriteIdle    = null;
+    this.hideWeapon    = false;   // Engineer bắn đạn → giữ súng xoay theo chuột
+    this.setScale(0.72);
+    this.body.setSize(36, 44);    // hitbox khớp thân (frame 64×64, tự scale)
   }
 
   // Active "Dựng Súng Máy" (Q) — đặt turret host-authority tại chỗ (cap 2, tự bắn 18dmg/0.6s,

@@ -100,127 +100,160 @@ function makeAtlas(scene, key, nFrames, drawFn, fw = FW, fh = FH) {
 // PLAYER DRAW FUNCTIONS  (frame = dir*4 + walkFrame)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ─── GUNNER — 48px "Survivor": hooded scavenger, gas-mask, blue glow accent ──────
-// Mood đêm tận thế: tông xám-lạnh ám màu môi trường + 1 điểm nhấn XANH (khăn + lăng
-// kính phát sáng) làm màu hiệu class & giữ readability trong horde.
+// ─── GUNNER — 48px SOUL KNIGHT (theo ảnh tham chiếu): survivor đội nón/khăn ĐỎ, kính
+// phi công gác trán (lens xanh thép — chút accent), mặt lộ + 2 mắt, mặt nạ lọc khí olive
+// có gân dọc che miệng, áo khoác nâu + vạt sáng dưới. Mảng màu PHẲNG, viền silhouette đậm.
 const G = {
-  OL:      '#090C14',
-  HOOD:    '#363C46', HOOD_HI: '#4C5460', HOOD_DK: '#23272F',
-  JACK:    '#3A4250', JACK_HI: '#505A6A', JACK_DK: '#232830',
-  FACE:    '#12151C',
-  MASK:    '#5A626C', MASK_HI: '#79828E', MASK_DK: '#383E46',
-  STRAP:   '#5A4632', STRAP_DK: '#3C2F1F',
-  PANTS:   '#2C313B', PANTS_HI: '#3C4350',
-  BOOT:    '#14161D',
-  LENS:    '#7FE0FF', LENS_DK: '#1FA8E0',
-  ACC:     '#2E6FE0', ACC_DK: '#1B4DA8', ACC_GLOW: '#4FB8FF' // xanh nhận diện
+  OL:    '#15100c',                                              // viền nâu-đen
+  CAP:   '#8e3b32', CAP_HI: '#b25a4a', CAP_DK: '#5e261f',        // nón/khăn đỏ
+  GOG:   '#6b4a2e', GOG_DK: '#46301d',                          // gọng kính nâu
+  LENS:  '#7fa6bc', LENS_HI:'#c8dee9', LENS_DK:'#3f5c6e',        // kính xanh thép (accent)
+  SKIN:  '#e8c59a', SKIN_DK:'#c79f72',                          // da
+  EYE:   '#241c16',
+  MASK:  '#8a7a44', MASK_HI:'#a89a5e', MASK_DK:'#5d5430',        // mặt nạ lọc olive
+  COAT:  '#7a4e30', COAT_HI:'#946142', COAT_DK:'#4c3020',        // áo khoác nâu
+  COATL: '#b89a6e', COATL_DK:'#94774f',                         // vạt áo sáng dưới
+  GLOVE: '#3c2a1c', BOOT: '#2a1d14',
+  ACC:   '#8e3b32'                                              // patch đỏ vai
 };
 
-// Vẽ ở khung 48×48 (lớn hơn 32 → nhân vật to & chi tiết hơn so với map).
+// Đầu to vừa kiểu Soul Knight, mặt lộ. Khung 48×48.
 function drawGunner(ctx, frame) {
   const dir = (frame / 4) | 0;
   const wf  = frame % 4;
   const w4  = wo4(wf);
-  const lO  = w4[0] * 1.5;
-  const rO  = w4[1] * 1.5;
-  const bob = (wf === 1 || wf === 3) ? 1.5 : 0; // nhún người khi bước
-  const arm = [0, 3, 0, -3][wf];                // vung tay
-  const hy  = 16 + bob;                          // head center y
+  const lO  = w4[0];
+  const rO  = w4[1];
+  const bob = (wf === 1 || wf === 3) ? 1 : 0;
+  const arm = [0, 2, 0, -2][wf];
+  const hy  = 16 + bob;                          // tâm đầu
 
-  if (dir === 0) { // DOWN — front view
-    fc(ctx, 24, hy, 15, G.OL);
-    fr(ctx, 13, 25 + bob, 22, 19, G.OL);
-    grect(ctx, 16, 40 + lO, 6, 6, G.PANTS_HI, G.PANTS);
-    grect(ctx, 26, 40 + rO, 6, 6, G.PANTS_HI, G.PANTS);
-    fr(ctx, 15, 45 + lO, 8, 3, G.BOOT);
-    fr(ctx, 25, 45 + rO, 8, 3, G.BOOT);
-    grect(ctx, 11 + arm, 26 + bob, 5, 12, G.JACK, G.JACK_DK);
-    grect(ctx, 32 - arm, 26 + bob, 5, 12, G.JACK, G.JACK_DK);
-    grect(ctx, 14, 25 + bob, 20, 17, G.JACK_HI, G.JACK);
-    fr(ctx, 14, 25 + bob, 20, 2, G.JACK_DK);
-    fr(ctx, 18, 26 + bob, 3, 16, G.STRAP);
-    fr(ctx, 27, 26 + bob, 3, 16, G.STRAP);
-    fr(ctx, 15, 37 + bob, 18, 4, G.STRAP_DK);   // ammo belt
-    fr(ctx, 17, 38 + bob, 2, 2, G.MASK_HI);
-    fr(ctx, 29, 38 + bob, 2, 2, G.MASK_HI);
-    gcircle(ctx, 24, hy, 14, G.HOOD_HI, G.HOOD); // mũ trùm
-    fc(ctx, 24, hy + 2, 10, G.FACE);             // hốc mặt tối
-    fr(ctx, 16, 23 + bob, 16, 3, G.ACC);         // khăn xanh
-    fr(ctx, 16, 25 + bob, 16, 1, G.ACC_DK);
-    grect(ctx, 17, hy - 3, 14, 11, G.MASK_HI, G.MASK); // mặt nạ
-    fr(ctx, 17, hy - 3, 14, 1, G.MASK_DK);
-    fc(ctx, 24, hy + 8, 4, G.MASK);              // hộp lọc
-    fc(ctx, 24, hy + 8, 2.3, G.MASK_DK);
-    glow(ctx, G.ACC_GLOW, 5, () => {             // lăng kính phát sáng
-      fc(ctx, 20, hy + 1, 3, G.LENS);
-      fc(ctx, 28, hy + 1, 3, G.LENS);
-    });
-    fc(ctx, 20, hy + 1, 1.5, G.LENS_DK);
-    fc(ctx, 28, hy + 1, 1.5, G.LENS_DK);
-    fc(ctx, 19.2, hy + 0.2, 0.9, '#ffffff');
-    fc(ctx, 27.2, hy + 0.2, 0.9, '#ffffff');
-    fc(ctx, 17, hy - 7, 3, G.HOOD_HI);           // rìa mũ sáng
+  fc(ctx, 24, 45, 9, 'rgba(0,0,0,0.16)');        // bóng mặt đất
 
-  } else if (dir === 1) { // UP — back view
-    fc(ctx, 24, hy, 15, G.OL);
-    fr(ctx, 13, 25 + bob, 22, 19, G.OL);
-    grect(ctx, 16, 40 + lO, 6, 6, G.PANTS_HI, G.PANTS);
-    grect(ctx, 26, 40 + rO, 6, 6, G.PANTS_HI, G.PANTS);
-    fr(ctx, 15, 45 + lO, 8, 3, G.BOOT);
-    fr(ctx, 25, 45 + rO, 8, 3, G.BOOT);
-    grect(ctx, 11 + arm, 26 + bob, 5, 12, G.JACK, G.JACK_DK);
-    grect(ctx, 32 - arm, 26 + bob, 5, 12, G.JACK, G.JACK_DK);
-    grect(ctx, 14, 25 + bob, 20, 17, G.JACK_HI, G.JACK);
-    grect(ctx, 16, 27 + bob, 16, 13, G.JACK_DK, '#1A1E25'); // balo
-    fr(ctx, 16, 27 + bob, 16, 1, G.JACK_HI);
-    glow(ctx, G.ACC_GLOW, 4, () => fr(ctx, 21, 31 + bob, 6, 3, G.ACC)); // tag xanh
-    gcircle(ctx, 24, hy, 14, G.HOOD_HI, G.HOOD);
-    fr(ctx, 19, hy + 6, 10, 3, G.HOOD_DK);       // cổ mũ
-    fc(ctx, 17, hy - 7, 3, G.HOOD_HI);
+  // ── helper: thân + tay + chân + vạt áo (dùng chung 4 hướng, đổi vài tham số) ──
+  const legs = () => {
+    fr(ctx, 16, 38 + lO, 7, 7, G.OL);  fr(ctx, 25, 38 + rO, 7, 7, G.OL);
+    fr(ctx, 17, 38 + lO, 5, 4, G.COATL);  fr(ctx, 17, 42 + lO, 5, 3, G.BOOT);
+    fr(ctx, 26, 38 + rO, 5, 4, G.COATL);  fr(ctx, 26, 42 + rO, 5, 3, G.BOOT);
+  };
+
+  if (dir === 0) { // DOWN — front (bám sát ảnh)
+    // silhouette
+    fr(ctx, 9, 27 + bob, 7, 13, G.OL);   fr(ctx, 32, 27 + bob, 7, 13, G.OL); // 2 tay
+    legs();
+    fr(ctx, 12, 25 + bob, 24, 16, G.OL);                                     // thân
+    fc(ctx, 24, hy, 11, G.OL);                                               // đầu
+
+    // tay áo + găng
+    fr(ctx, 10, 28 + bob, 5, 10, G.COAT);  fr(ctx, 10, 28 + bob, 5, 4, G.COAT_HI);  fr(ctx, 10, 36 + bob, 5, 3, G.GLOVE);
+    fr(ctx, 33, 28 + bob, 5, 10, G.COAT);  fr(ctx, 33, 28 + bob, 5, 4, G.COAT_DK);  fr(ctx, 33, 36 + bob, 5, 3, G.GLOVE);
+
+    // áo khoác
+    fr(ctx, 13, 26 + bob, 22, 15, G.COAT);
+    fr(ctx, 13, 26 + bob, 8, 15, G.COAT_HI);            // nửa trái sáng
+    fr(ctx, 13, 37 + bob, 22, 4, G.COATL);              // vạt sáng dưới
+    fr(ctx, 13, 37 + bob, 22, 1, G.COAT_DK);
+    fr(ctx, 22, 28 + bob, 4, 11, G.COATL_DK);           // mép áo trước
+    fr(ctx, 14, 26 + bob, 7, 4, G.ACC);  fr(ctx, 14, 26 + bob, 7, 1, G.CAP_DK); // patch đỏ vai
+
+    // ── mặt (da) ──
+    fc(ctx, 24, 19, 9, G.SKIN);
+    fr(ctx, 15, 17, 18, 7, G.SKIN);
+    fr(ctx, 15, 22, 18, 2, G.SKIN_DK);                  // bóng dưới gò má
+    // mắt
+    fr(ctx, 20, 18, 2, 3, G.EYE);  fr(ctx, 27, 18, 2, 3, G.EYE);
+    fr(ctx, 20, 18, 1, 1, '#ffffff');  fr(ctx, 27, 18, 1, 1, '#ffffff');
+
+    // ── mặt nạ lọc (che miệng/cằm) — gân dọc ──
+    fr(ctx, 18, 22, 12, 8, G.MASK);
+    fr(ctx, 18, 22, 12, 1, G.MASK_HI);
+    fr(ctx, 18, 29, 12, 1, G.MASK_DK);
+    fr(ctx, 21, 23, 1, 6, G.MASK_DK);  fr(ctx, 24, 23, 1, 6, G.MASK_DK);  fr(ctx, 27, 23, 1, 6, G.MASK_DK);
+    fr(ctx, 17, 28, 1, 2, G.OL);  fr(ctx, 30, 28, 1, 2, G.OL);           // bo góc đáy
+
+    // ── kính phi công gác trán ──
+    fr(ctx, 15, 13, 18, 4, G.GOG);  fr(ctx, 15, 13, 18, 1, G.GOG_DK);    // dây kính
+    fc(ctx, 19, 14, 3.4, G.GOG_DK);  fc(ctx, 29, 14, 3.4, G.GOG_DK);     // gọng tròn
+    fc(ctx, 19, 14, 2.4, G.LENS);    fc(ctx, 29, 14, 2.4, G.LENS);
+    fr(ctx, 17.5, 12.5, 2, 2, G.LENS_HI);  fr(ctx, 27.5, 12.5, 2, 2, G.LENS_HI);
+
+    // ── nón/khăn đỏ (trên cùng) ──
+    fc(ctx, 24, 11, 11, G.CAP);                          // vòm nón
+    fr(ctx, 13, 12, 22, 2, G.CAP_DK);                    // mép nón
+    fc(ctx, 20, 8, 4, G.CAP_HI);                         // highlight
+    fr(ctx, 11, 12, 5, 3, G.CAP_DK);                     // chóp lệch trái
+
+  } else if (dir === 1) { // UP — back
+    fr(ctx, 9, 27 + bob, 7, 13, G.OL);   fr(ctx, 32, 27 + bob, 7, 13, G.OL);
+    legs();
+    fr(ctx, 12, 25 + bob, 24, 16, G.OL);
+    fc(ctx, 24, hy, 11, G.OL);
+
+    fr(ctx, 10, 28 + bob, 5, 10, G.COAT);  fr(ctx, 10, 36 + bob, 5, 3, G.GLOVE);
+    fr(ctx, 33, 28 + bob, 5, 10, G.COAT);  fr(ctx, 33, 36 + bob, 5, 3, G.GLOVE);
+    fr(ctx, 13, 26 + bob, 22, 15, G.COAT);
+    fr(ctx, 13, 26 + bob, 8, 15, G.COAT_HI);
+    fr(ctx, 15, 28 + bob, 18, 9, G.COAT_DK);            // ba lô
+    fr(ctx, 15, 28 + bob, 18, 1, G.COAT);
+    fr(ctx, 20, 31 + bob, 8, 4, G.ACC);                // tag đỏ
+    fr(ctx, 13, 37 + bob, 22, 4, G.COATL);  fr(ctx, 13, 37 + bob, 22, 1, G.COAT_DK);
+
+    // sau đầu: nón đỏ + dây kính
+    fc(ctx, 24, 15, 11, G.CAP);
+    fc(ctx, 24, 17, 9, G.CAP_DK);                       // tóc/gáy tối trong nón
+    fr(ctx, 15, 13, 18, 3, G.GOG);  fr(ctx, 15, 13, 18, 1, G.GOG_DK); // dây kính vòng sau
+    fc(ctx, 20, 9, 4, G.CAP_HI);
+    fr(ctx, 11, 13, 5, 3, G.CAP_DK);
 
   } else if (dir === 2) { // LEFT
-    fc(ctx, 22, hy, 14, G.OL);
-    fr(ctx, 13, 25 + bob, 21, 19, G.OL);
-    grect(ctx, 16, 40 + lO, 6, 6, G.PANTS_HI, G.PANTS);
-    grect(ctx, 24, 40 + rO, 6, 6, G.PANTS_HI, G.PANTS);
-    fr(ctx, 14, 45 + lO, 8, 3, G.BOOT);
-    fr(ctx, 23, 45 + rO, 8, 3, G.BOOT);
-    fr(ctx, 28, 27 + bob, 5, 11, G.JACK_DK);     // tay sau
-    grect(ctx, 14, 25 + bob, 19, 17, G.JACK_HI, G.JACK);
-    fr(ctx, 14, 26 + bob, 4, 14, G.STRAP);
-    grect(ctx, 11 + arm, 28 + bob, 5, 10, G.JACK, G.JACK_DK); // tay trước
-    gcircle(ctx, 22, hy, 14, G.HOOD_HI, G.HOOD);
-    fc(ctx, 18, hy + 2, 9, G.FACE);
-    fr(ctx, 13, 23 + bob, 16, 3, G.ACC);         // khăn
-    grect(ctx, 9, hy - 2, 12, 9, G.MASK_HI, G.MASK);
-    fc(ctx, 10, hy + 6, 3.5, G.MASK);            // hộp lọc phía trước
-    fc(ctx, 10, hy + 6, 2, G.MASK_DK);
-    glow(ctx, G.ACC_GLOW, 5, () => fc(ctx, 14, hy + 1, 3, G.LENS));
-    fc(ctx, 14, hy + 1, 1.5, G.LENS_DK);
-    fc(ctx, 13.2, hy + 0.2, 0.9, '#ffffff');
-    fc(ctx, 20, hy - 7, 3, G.HOOD_HI);
+    fr(ctx, 26, 27 + bob, 6, 13, G.OL);                 // tay sau
+    legs();
+    fr(ctx, 13, 25 + bob, 21, 16, G.OL);
+    fr(ctx, 9, 28 + bob, 6, 12, G.OL);                  // tay trước
+    fc(ctx, 22, hy, 11, G.OL);
+
+    fr(ctx, 27, 28 + bob, 4, 11, G.COAT_DK);            // tay sau
+    fr(ctx, 14, 26 + bob, 19, 15, G.COAT);
+    fr(ctx, 14, 26 + bob, 19, 3, G.COAT_HI);
+    fr(ctx, 14, 37 + bob, 19, 4, G.COATL);  fr(ctx, 14, 37 + bob, 19, 1, G.COAT_DK);
+    fr(ctx, 10, 29 + bob, 5, 10, G.COAT);  fr(ctx, 10, 37 + bob, 5, 3, G.GLOVE); // tay trước
+
+    // mặt nghiêng
+    fc(ctx, 20, 19, 8, G.SKIN);
+    fr(ctx, 11, 17, 13, 7, G.SKIN);
+    fr(ctx, 16, 18, 2, 3, G.EYE);  fr(ctx, 16, 18, 1, 1, '#ffffff'); // 1 mắt
+    // mặt nạ trước
+    fr(ctx, 10, 22, 9, 7, G.MASK);  fr(ctx, 10, 22, 9, 1, G.MASK_HI);  fr(ctx, 10, 28, 9, 1, G.MASK_DK);
+    fr(ctx, 12, 23, 1, 5, G.MASK_DK);  fr(ctx, 15, 23, 1, 5, G.MASK_DK);
+    // kính gác trán (1 lens)
+    fr(ctx, 12, 13, 16, 4, G.GOG);  fr(ctx, 12, 13, 16, 1, G.GOG_DK);
+    fc(ctx, 16, 14, 3.2, G.GOG_DK);  fc(ctx, 16, 14, 2.2, G.LENS);  fr(ctx, 14.5, 12.5, 2, 2, G.LENS_HI);
+    // nón
+    fc(ctx, 22, 11, 11, G.CAP);  fr(ctx, 11, 12, 22, 2, G.CAP_DK);
+    fc(ctx, 18, 8, 4, G.CAP_HI);  fr(ctx, 9, 13, 5, 3, G.CAP_DK);    // chóp ra trước
 
   } else { // RIGHT
-    fc(ctx, 26, hy, 14, G.OL);
-    fr(ctx, 14, 25 + bob, 21, 19, G.OL);
-    grect(ctx, 18, 40 + lO, 6, 6, G.PANTS_HI, G.PANTS);
-    grect(ctx, 26, 40 + rO, 6, 6, G.PANTS_HI, G.PANTS);
-    fr(ctx, 17, 45 + lO, 8, 3, G.BOOT);
-    fr(ctx, 26, 45 + rO, 8, 3, G.BOOT);
-    fr(ctx, 15, 27 + bob, 5, 11, G.JACK_DK);     // tay sau
-    grect(ctx, 15, 25 + bob, 19, 17, G.JACK_HI, G.JACK);
-    fr(ctx, 30, 26 + bob, 4, 14, G.STRAP);
-    grect(ctx, 32 - arm, 28 + bob, 5, 10, G.JACK, G.JACK_DK); // tay trước
-    gcircle(ctx, 26, hy, 14, G.HOOD_HI, G.HOOD);
-    fc(ctx, 30, hy + 2, 9, G.FACE);
-    fr(ctx, 19, 23 + bob, 16, 3, G.ACC);
-    grect(ctx, 27, hy - 2, 12, 9, G.MASK_HI, G.MASK);
-    fc(ctx, 38, hy + 6, 3.5, G.MASK);
-    fc(ctx, 38, hy + 6, 2, G.MASK_DK);
-    glow(ctx, G.ACC_GLOW, 5, () => fc(ctx, 34, hy + 1, 3, G.LENS));
-    fc(ctx, 34, hy + 1, 1.5, G.LENS_DK);
-    fc(ctx, 34.8, hy + 0.2, 0.9, '#ffffff');
-    fc(ctx, 28, hy - 7, 3, G.HOOD_HI);
+    fr(ctx, 16, 27 + bob, 6, 13, G.OL);                 // tay sau
+    legs();
+    fr(ctx, 14, 25 + bob, 21, 16, G.OL);
+    fr(ctx, 33, 28 + bob, 6, 12, G.OL);                 // tay trước
+    fc(ctx, 26, hy, 11, G.OL);
+
+    fr(ctx, 17, 28 + bob, 4, 11, G.COAT_DK);            // tay sau
+    fr(ctx, 15, 26 + bob, 19, 15, G.COAT);
+    fr(ctx, 15, 26 + bob, 19, 3, G.COAT_HI);
+    fr(ctx, 15, 37 + bob, 19, 4, G.COATL);  fr(ctx, 15, 37 + bob, 19, 1, G.COAT_DK);
+    fr(ctx, 33, 29 + bob, 5, 10, G.COAT);  fr(ctx, 33, 37 + bob, 5, 3, G.GLOVE); // tay trước
+
+    fc(ctx, 28, 19, 8, G.SKIN);
+    fr(ctx, 24, 17, 13, 7, G.SKIN);
+    fr(ctx, 30, 18, 2, 3, G.EYE);  fr(ctx, 30, 18, 1, 1, '#ffffff');
+    fr(ctx, 29, 22, 9, 7, G.MASK);  fr(ctx, 29, 22, 9, 1, G.MASK_HI);  fr(ctx, 29, 28, 9, 1, G.MASK_DK);
+    fr(ctx, 32, 23, 1, 5, G.MASK_DK);  fr(ctx, 35, 23, 1, 5, G.MASK_DK);
+    fr(ctx, 20, 13, 16, 4, G.GOG);  fr(ctx, 20, 13, 16, 1, G.GOG_DK);
+    fc(ctx, 32, 14, 3.2, G.GOG_DK);  fc(ctx, 32, 14, 2.2, G.LENS);  fr(ctx, 30.5, 12.5, 2, 2, G.LENS_HI);
+    fc(ctx, 26, 11, 11, G.CAP);  fr(ctx, 15, 12, 22, 2, G.CAP_DK);
+    fc(ctx, 22, 8, 4, G.CAP_HI);  fr(ctx, 34, 13, 5, 3, G.CAP_DK);
   }
 }
 

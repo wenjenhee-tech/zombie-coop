@@ -15,6 +15,12 @@ export default class GameScene extends Phaser.Scene {
     this.load.audio('zombie_growl', '/audio/sfx/zombie_growl.wav'); // ambient gầm
     this.load.audio('zombie_hit', '/audio/sfx/zombie_hit.wav');     // grunt ngắn (lát growl)
     this.load.audio('zombie_die', '/audio/sfx/zombie_die.wav');     // groan (lát growl)
+
+    // Sprite tĩnh vẽ tay (Soul Knight) — cả 4 class (tách nền từ PNG). Nhìn chính diện + lật theo chuột.
+    this.load.image('ranged_sprite',    '/assets/sprites/player_ranged.png');
+    this.load.image('melee_sprite',     '/assets/sprites/melee_sprite.png');
+    this.load.image('scientist_sprite', '/assets/sprites/scientist_sprite.png');
+    this.load.image('engineer_sprite',  '/assets/sprites/engineer_sprite.png');
   }
 
   create() {
@@ -42,6 +48,7 @@ export default class GameScene extends Phaser.Scene {
     const classMap = { Ranged, Melee, Scientist, Engineer };
     const PlayerClass = classMap[store.playerStats.class] || Ranged;
     this.player = new PlayerClass(this, this.cameras.main.width / 2, this.cameras.main.height / 2);
+    if (this.player.useSpriteAnim) this.player._baseScale = this.player.scaleX; // mốc scale cho animator
     // Unique ID for this client
     this.playerId = store.socket.id;
 
@@ -162,15 +169,31 @@ export default class GameScene extends Phaser.Scene {
     events.forEach(e => store.socket.off(e));
 
     const CLASS_COLORS = { Ranged: 0xe67e22, Melee: 0x2980b9, Scientist: 0x27ae60, Engineer: 0xf1c40f };
+    // Class dùng sprite vẽ tay (Soul Knight), tĩnh 1 frame. weapon=true → vẽ thêm layer súng
+    // (ranged/scientist/engineer bắn đạn); melee giấu (cảm giác chém qua slash-arc).
+    const SPRITE_CLASSES = {
+      ranged:    { tex: 'ranged_sprite',    scale: 0.7, weapon: true  },
+      melee:     { tex: 'melee_sprite',     scale: 0.72, weapon: false },
+      scientist: { tex: 'scientist_sprite', scale: 0.72, weapon: true  },
+      engineer:  { tex: 'engineer_sprite',  scale: 0.72, weapon: true  }
+    };
 
     store.socket.on('player_moved', (data) => {
       let other = this.otherPlayers.getChildren().find(p => p.id === data.id);
       if (!other) {
         const playerInfo = store.currentRoomDetails.players.find(p => p.id === data.id);
         const cls = (playerInfo?.class || 'Ranged').toLowerCase();
-        other = this.add.sprite(data.x, data.y, `player_${cls}`);
+        const sc = SPRITE_CLASSES[cls]; // class dùng sprite vẽ tay (Soul Knight)
+        other = this.add.sprite(data.x, data.y, sc ? sc.tex : `player_${cls}`);
         other.id = data.id;
-        other.weapon = this.add.graphics(); // layer vũ khí riêng, xoay theo aim của họ
+        if (sc) {
+          other.isSpriteAnim = true;
+          other.setScale(sc.scale);
+          other._baseScale = sc.scale; // mốc scale cho animator
+          if (sc.weapon) other.weapon = this.add.graphics(); // bắn đạn → vẫn có súng
+        } else {
+          other.weapon = this.add.graphics(); // layer vũ khí riêng, xoay theo aim của họ
+        }
         this.otherPlayers.add(other);
       }
       other.setPosition(data.x, data.y);
@@ -179,10 +202,20 @@ export default class GameScene extends Phaser.Scene {
       // đang bị ẩn (vì player_died trước đó thiếu player_revived khớp — reconnect
       // đổi socket.id, mất gói...), hiện lại để khỏi "vô hình nhưng vẫn bắn".
       if (!other.visible) other.setVisible(true);
+
+      const { velocityX: vx, velocityY: vy } = data;
+
+      // Soul Knight (sprite tĩnh): lật trái/phải theo hướng ngắm; lưu velocity cho animator.
+      if (other.isSpriteAnim) {
+        other._vx = vx; other._vy = vy;
+        if (data.rotation != null) other.setFlipX(Math.abs(data.rotation) > Math.PI / 2);
+        if (other.weapon) this._updateOtherWeapon(other, data.x, data.y, data.rotation); // súng
+        return;
+      }
+
       this._updateOtherWeapon(other, data.x, data.y, data.rotation);
 
       // Play walk animation based on velocity
-      const { velocityX: vx, velocityY: vy } = data;
       const moving = Math.abs(vx) > 10 || Math.abs(vy) > 10;
       if (moving) {
         const cls = other.texture.key.replace('player_', '');
@@ -540,6 +573,32 @@ export default class GameScene extends Phaser.Scene {
         this.otherPlayers.remove(other, true, true);
       }
     });
+  }
+
+  // ── Animation giả lập từ sprite tĩnh (Soul Knight): mỗi frame biến hình nhẹ theo
+  // trạng thái — idle thì bob+thở; di chuyển thì bob mạnh/nhanh + squash lúc "tiếp đất"
+  // + lắc nhẹ kiểu chạy. Chỉ đụng origin/scale/rotation (hiển thị), KHÔNG đụng body.
+  _tickSpriteAnim(sprite, vx, vy, time) {
+    if (!sprite || !sprite.active || sprite._baseScale == null) return;
+    const bs = sprite._baseScale;
+    const h = sprite.height || 64;
+    const moving = Math.abs(vx) > 12 || Math.abs(vy) > 12;
+
+    const w  = moving ? 0.018 : 0.0085;        // tần số (rad/ms): chạy nhanh hơn idle
+    const ph = time * w;
+    const s  = Math.sin(ph);
+    const c  = Math.cos(ph * 2);               // nhịp đôi cho squash khi tiếp đất
+
+    const bobPx = moving ? 2.6 : 1.4;          // biên độ bob (px)
+    sprite.setOrigin(0.5, 0.5 - (bobPx * s) / h);
+
+    // squash-stretch: cao nhất → kéo dài, thấp nhất → bè ra (giữ "thể tích")
+    const k = moving ? 0.07 : 0.03;
+    sprite.scaleY = bs * (1 + k * s);
+    sprite.scaleX = bs * (1 - k * 0.55 * s);
+
+    // lắc nhẹ khi chạy (rotation không ảnh hưởng hitbox AABB của Arcade)
+    sprite.rotation = moving ? 0.05 * c : 0;
   }
 
   // ── Phát âm thanh theo vị trí: nhỏ dần theo khoảng cách tới player, quá xa thì bỏ.
@@ -951,7 +1010,11 @@ export default class GameScene extends Phaser.Scene {
 
     if (this.player && this.player.active) {
       this.player.update(time, delta);
-      
+
+      // Animation giả lập (Soul Knight): biến hình theo trạng thái di chuyển
+      if (this.player.useSpriteAnim)
+        this._tickSpriteAnim(this.player, this.player.body.velocity.x, this.player.body.velocity.y, time);
+
       // Sync HP and Cooldowns to Vue Store
       store.playerStats.hp = this.player.hp;
       store.playerStats.maxHp = this.player.maxHp;
@@ -1002,6 +1065,11 @@ export default class GameScene extends Phaser.Scene {
       }
 
     }
+
+    // Animation giả lập cho đồng đội dùng sprite Soul Knight (đọc velocity từ player_moved)
+    this.otherPlayers.getChildren().forEach(o => {
+      if (o.isSpriteAnim) this._tickSpriteAnim(o, o._vx || 0, o._vy || 0, time);
+    });
 
     // Death markers cho mọi teammate đã chết (đặt tại deathX/deathY)
     this.refreshDeathMarkers();

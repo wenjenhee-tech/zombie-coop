@@ -147,6 +147,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   _updateFacingAnim() {
+    // Soul Knight: luôn nhìn chính diện, không dùng walk_<dir>. spriteIdle = anim bounce (nếu có),
+    // null = sprite tĩnh 1 frame. Lật trái/phải xử lý trong handleRotation theo hướng ngắm.
+    if (this.useSpriteAnim) {
+      if (this.spriteIdle && this.anims.currentAnim?.key !== this.spriteIdle) this.play(this.spriteIdle);
+      return;
+    }
+
     const vx = this.body.velocity.x;
     const vy = this.body.velocity.y;
     const moving = Math.abs(vx) > 10 || Math.abs(vy) > 10;
@@ -168,6 +175,12 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const pointer = this.scene.input.activePointer;
     const angle = Phaser.Math.Angle.Between(this.x, this.y, pointer.worldX, pointer.worldY);
     this.aimAngle = angle; // góc ngắm (thân không xoay) — gửi qua player_move cho đồng đội
+
+    // Soul Knight: thân lật trái/phải theo hướng ngắm. hideWeapon=true (Melee) → vũ khí trong
+    // sprite, bỏ layer súng; false (Ranged) → vẫn vẽ súng xoay theo chuột.
+    if (this.useSpriteAnim) this.setFlipX(Math.abs(angle) > Math.PI / 2);
+    if (this.hideWeapon) return;
+
     // Recoil: nòng giật lùi theo hướng ngắm rồi hồi dần
     this._recoil = this._recoil > 0.3 ? this._recoil * 0.7 : 0;
     const rc = this._recoil;
@@ -220,7 +233,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.setActive(true);
     this.setVisible(true);
     this.clearTint();
-    this.weaponGraphics.setVisible(true);
+    this.weaponGraphics.setVisible(!this.hideWeapon); // Melee: vũ khí trong sprite, giữ ẩn
     if (this.body) {
       this.body.enable = true;
       this.body.reset(x, y);
