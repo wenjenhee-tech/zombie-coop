@@ -861,7 +861,7 @@ export default class GameScene extends Phaser.Scene {
     const aim = Phaser.Math.Angle.Between(p.x, p.y, pointer.worldX, pointer.worldY);
     const halfArc = Phaser.Math.DegToRad(p.meleeArcDeg) / 2;
     const reach = p.meleeRange;
-    let hits = 0;
+    let hits = 0, totalDmg = 0, lastZ = null;
 
     this.zombies.getChildren().forEach(z => {
       if (!z.active) return;
@@ -869,11 +869,19 @@ export default class GameScene extends Phaser.Scene {
       const da = Phaser.Math.Angle.Wrap(Phaser.Math.Angle.Between(p.x, p.y, z.x, z.y) - aim);
       if (Math.abs(da) > halfArc) return;
       hits++;
+      let mdmg = p.meleeDamage * (1 + p.getBuffValue('Sharpshooter'));
+      mdmg = Math.round(this._applyExecutioner(z, mdmg)); // Kết Liễu lên quái máu thấp
       store.socket.emit('zombie_damaged', {
-        roomCode: store.playerStats.roomCode, zombieId: z.id,
-        damage: Math.round(p.meleeDamage * (1 + p.getBuffValue('Sharpshooter')))
+        roomCode: store.playerStats.roomCode, zombieId: z.id, damage: mdmg
       });
+      totalDmg += mdmg; lastZ = z;
     });
+
+    // Synergy: 1 lần/nhát — tia điện từ 1 mục tiêu, tích nổ theo tổng sát thương cleave
+    if (hits > 0) {
+      this._chainLightning(lastZ, Math.round(totalDmg / hits));
+      this._overloadAccum(totalDmg, lastZ.x, lastZ.y);
+    }
 
     // Hút máu — cap 2 mục tiêu/nhát để không overheal giữa đám đông
     if (hits > 0) {
@@ -1007,6 +1015,66 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  // ── Synergy powerup ────────────────────────────────────────────────────────
+  // Kết Liễu (Executioner): +% dmg lên zombie đang máu thấp (<25%) — thưởng focus-fire.
+  _applyExecutioner(zombie, dmg) {
+    const p = this.player;
+    if (p.hasBuff('Kết Liễu') && zombie.maxHp && zombie.hp < zombie.maxHp * 0.25) {
+      return dmg * (1 + p.getBuffValue('Kết Liễu'));
+    }
+    return dmg;
+  }
+
+  // Hồ Quang (Chain Lightning): % cơ hội tia điện nhảy sang zombie sống gần nhất khác,
+  // gây 45% sát thương. Server xử lý damage (zombie_damaged), client vẽ tia.
+  _chainLightning(zombie, dmg) {
+    const p = this.player;
+    if (!zombie || !p.hasBuff('Hồ Quang')) return;
+    if (Math.random() >= p.getBuffValue('Hồ Quang')) return;
+    let target = null, nd = 180;
+    this.zombies.getChildren().forEach(z => {
+      if (!z.active || z.id === zombie.id) return;
+      const d = Phaser.Math.Distance.Between(zombie.x, zombie.y, z.x, z.y);
+      if (d < nd) { nd = d; target = z; }
+    });
+    if (!target) return;
+    const cdmg = Math.max(1, Math.round(dmg * 0.45));
+    store.socket.emit('zombie_damaged', {
+      roomCode: store.playerStats.roomCode, zombieId: target.id, damage: cdmg
+    });
+    this._lightningFx(zombie.x, zombie.y, target.x, target.y);
+    this._damageNumber(target.x, target.y, cdmg);
+  }
+
+  _lightningFx(x1, y1, x2, y2) {
+    const g = this.add.graphics().setDepth(50);
+    g.lineStyle(2, 0x7fdfff, 0.95);
+    g.beginPath(); g.moveTo(x1, y1);
+    const segs = 4;
+    for (let i = 1; i < segs; i++) {
+      const t = i / segs;
+      g.lineTo(x1 + (x2 - x1) * t + Phaser.Math.Between(-12, 12),
+               y1 + (y2 - y1) * t + Phaser.Math.Between(-12, 12));
+    }
+    g.lineTo(x2, y2); g.strokePath();
+    this.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() });
+  }
+
+  // Quá Tải (Overload): tích sát thương đã gây; đủ ngưỡng → nổ AoE quanh mục tiêu.
+  // Tái dùng skill_burst (server-authoritative AoE) → không double-damage giữa client.
+  _overloadAccum(dmg, x, y) {
+    const p = this.player;
+    if (!p.hasBuff('Quá Tải')) return;
+    this._overload = (this._overload || 0) + dmg;
+    const THRESH = 200;
+    if (this._overload < THRESH) return;
+    this._overload -= THRESH;
+    store.socket.emit('skill_burst', {
+      roomCode: store.playerStats.roomCode,
+      x, y, radius: 100, damage: p.getBuffValue('Quá Tải'), effect: null, fx: 'overload'
+    });
+  }
+
   // Hit-stop: khựng thời gian cực ngắn cho đòn nặng (crit / cleave trúng nhiều) → "punch".
   // Dùng setTimeout REAL-TIME để khôi phục (không bị chính timeScale làm giãn ra).
   // Arcade physics: world.timeScale > 1 = chậm hơn (nghịch đảo của clock timeScale).
@@ -1053,6 +1121,8 @@ export default class GameScene extends Phaser.Scene {
 
       // Sharpshooter: +% sát thương gây ra
       let dmg = (bullet.damage || 15) * (1 + this.player.getBuffValue('Sharpshooter'));
+      // Kết Liễu (Executioner): +dmg lên quái máu thấp
+      dmg = this._applyExecutioner(zombie, dmg);
       // Crit Surge (sig Ranged) cộng vào critChance gốc
       if (Math.random() < ((this.player.critChance || 0) + this.player.getBuffValue('Crit Surge'))) {
         dmg *= 2;
@@ -1067,6 +1137,10 @@ export default class GameScene extends Phaser.Scene {
         zombieId: zombie.id,
         damage: dmg
       });
+
+      // Synergy on-hit: tia điện nhảy + tích nổ Quá Tải
+      this._chainLightning(zombie, dmg);
+      this._overloadAccum(dmg, zombie.x, zombie.y);
 
       this.shotsHit++;
       store.playerStats.shotsHit++;

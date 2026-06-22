@@ -12,6 +12,9 @@ const BUFF_INCREMENTS = {
   'Sharpshooter':   [0.15, 0.10, 0.05],  // % tăng sát thương gây ra
   'Cool Down':      [0.15, 0.10, 0.05],  // % giảm hồi chiêu kỹ năng
   'Fire Ammo':      [1],                  // bật cháy (hasBuff — 1 stack)
+  'Kết Liễu':       [0.25, 0.25],         // +% dmg lên zombie máu <25% (Executioner)
+  'Hồ Quang':       [0.20, 0.15],         // % cơ hội tia điện nhảy (Chain Lightning)
+  'Quá Tải':        [40,   30],           // dmg vụ nổ Overload (ngưỡng tích cố định)
   // Piercing Round: không cần entry (dùng hasBuff, không cần getBuffValue)
   // ── Signature theo class ───────────────────────────────────────────────────
   'Crit Surge':     [0.10, 0.10, 0.10],  // +crit% (Ranged)

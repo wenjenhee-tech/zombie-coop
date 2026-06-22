@@ -1163,9 +1163,12 @@ setInterval(() => {
         { id: 'rapid_fire',     name: 'Rapid Fire',     desc: '+25% tốc độ bắn / chém',                     tier: 2, cat: 'off',  maxStacks: 3 },
         { id: 'sharpshooter',   name: 'Sharpshooter',   desc: '+15% sát thương gây ra (đạn lẫn cận chiến)', tier: 2, cat: 'off',  maxStacks: 3 },
         { id: 'cool_down',      name: 'Cool Down',      desc: 'Giảm 15% hồi chiêu tất cả kỹ năng',          tier: 2, cat: 'util', maxStacks: 3 },
+        { id: 'executioner',    name: 'Kết Liễu',       desc: '+25% sát thương lên zombie máu dưới 25%',   tier: 2, cat: 'off',  maxStacks: 2 },
         // ── Tier 3 — hiếm ──────────────────────────────────────────────────────
         { id: 'fire_ammo',      name: 'Fire Ammo',      desc: 'Đạn cháy: thêm 5 dmg/s × 3s sau mỗi phát',  tier: 3, cat: 'off',  maxStacks: 1 },
         { id: 'piercing_round', name: 'Piercing Round', desc: 'Đạn xuyên qua thêm 1 zombie',                tier: 3, cat: 'off',  maxStacks: 1 },
+        { id: 'chain_lightning',name: 'Hồ Quang',       desc: '20% cơ hội tia điện nhảy sang quái gần (45% dmg)', tier: 3, cat: 'off', maxStacks: 2 },
+        { id: 'overload',       name: 'Quá Tải',        desc: 'Tích đủ sát thương → nổ AoE quanh mục tiêu', tier: 3, cat: 'off',  maxStacks: 2 },
         // ── Signature — độc quyền theo class (sig) ─────────────────────────────
         { id: 'crit_surge',     name: 'Crit Surge',     desc: '+10% tỉ lệ chí mạng (×2 sát thương)',       tier: 3, cat: 'off',  maxStacks: 3, sig: 'ranged' },
         { id: 'bloodthirst',    name: 'Bloodthirst',    desc: '+10% hút máu khi chém',                     tier: 3, cat: 'off',  maxStacks: 2, sig: 'melee' },
