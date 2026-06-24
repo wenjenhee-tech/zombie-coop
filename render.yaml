@@ -1,0 +1,17 @@
+# Render Blueprint — deploy backend zombie-coop (Node + Socket.io).
+# Cách dùng: Render Dashboard → New → Blueprint → chọn repo này → Apply.
+# MONGO_URI để sync:false → Render sẽ hỏi nhập tay (giữ bí mật, không commit vào repo).
+services:
+  - type: web
+    name: zombie-coop-server
+    runtime: node
+    plan: free
+    rootDir: zombie-coop/game-server
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    envVars:
+      - key: MONGO_URI
+        sync: false        # nhập trong dashboard: connection string Atlas (đuôi /zombie_coop)
+      - key: AI_SERVICE_URL
+        value: ""          # để trống → server bỏ qua AI difficulty, dùng Director mặc định

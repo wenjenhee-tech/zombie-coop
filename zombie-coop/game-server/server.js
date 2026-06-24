@@ -9,6 +9,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Health check (Render/UptimeRobot ping) — tránh 404 ở "/" và cho biết DB còn nối không.
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', service: 'zombie-coop-server', db: mongoose.connection.readyState === 1 ? 'up' : 'down' });
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
